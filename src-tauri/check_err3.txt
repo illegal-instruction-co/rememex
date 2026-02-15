@@ -1,7 +1,0 @@
-    Checking tauri v2.10.2
-    Checking tauri-plugin-fs v2.4.5
-    Checking tauri-plugin-shell v2.3.5
-    Checking tauri-plugin-global-shortcut v2.3.1
-    Checking tauri-plugin-dialog v2.6.0
-    Checking recall-lite v1.0.5 (C:\Users\mbk\Desktop\recall-lite\src-tauri)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.69s

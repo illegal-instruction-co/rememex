@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   FileText, FileCode, FileJson, Image as ImageIcon, File,
   Loader2, FolderPlus, Search, Box, Plus, Trash2, FolderOpen,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Folder
 } from "lucide-react";
 import { useModal, ModalProvider } from "./Modal";
 import "./App.css";
@@ -360,14 +360,26 @@ function App() {
                         )}
                       </div>
                     </button>
-                    {activeContainer === c.name && c.indexed_paths.length > 0 && (
-                      <div className="indexed-paths">
-                        {c.indexed_paths.map(p => (
-                          <div key={p} className="indexed-path-item">
-                            <FolderOpen size={10} className="shrink-0 opacity-40" />
-                            <span className="truncate">{p}</span>
+                    {activeContainer === c.name && (
+                      <div className="indexed-paths-section">
+                        <div className="indexed-paths-header">
+                          <Folder size={10} className="opacity-40" />
+                          <span>Indexed Folders</span>
+                        </div>
+                        {c.indexed_paths.length > 0 ? (
+                          <div className="indexed-paths">
+                            {c.indexed_paths.map(p => (
+                              <div key={p} className="indexed-path-item" title={p}>
+                                <FolderOpen size={10} className="shrink-0 opacity-50" />
+                                <span className="truncate">{p.split(/[\\/]/).slice(-2).join('/')}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          <div className="indexed-paths-empty">
+                            No folders indexed yet
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -456,7 +468,7 @@ function App() {
               {status ? (
                 <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
               ) : (
-                <span>{results.length} items</span>
+                <span>Indexed {containers.find(c => c.name === activeContainer)?.indexed_paths.length || 0} folders · {results.length} results</span>
               )}
             </div>
             <div className="flex items-center gap-4 opacity-80 px-2">

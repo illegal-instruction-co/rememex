@@ -182,18 +182,9 @@ async fn search(
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
-    let (table_name, description) = {
+    let table_name = {
         let config = config_state.config.lock().await;
-        let desc = config.containers.get(&config.active_container)
-            .map(|c| c.description.clone())
-            .unwrap_or_default();
-        (get_table_name(&config.active_container), desc)
-    };
-
-    let contextualized_query = if description.is_empty() {
-        query.clone()
-    } else {
-        format!("{}: {}", description, query)
+        get_table_name(&config.active_container)
     };
 
     let query_vector = {
@@ -202,7 +193,7 @@ async fn search(
             return Err(format!("Model init failed: {}", err));
         }
         let model = guard.model.as_mut().ok_or("Model is still loading...")?;
-        indexer::embed_query(model, &contextualized_query)
+        indexer::embed_query(model, &query)
             .map_err(|e| e.to_string())?
     };
 
@@ -215,7 +206,7 @@ async fn search(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(results
+    let mut scored: Vec<SearchResult> = results
         .into_iter()
         .map(|(path, snippet, cosine_dist)| {
             let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
@@ -225,8 +216,20 @@ async fn search(
                 score: similarity * 100.0,
             }
         })
-        .filter(|r| r.score >= 40.0)
-        .collect())
+        .filter(|r| r.score >= 50.0)
+        .collect();
+
+    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    let cutoff = scored.windows(2)
+        .position(|pair| pair[0].score - pair[1].score > 15.0)
+        .map(|i| i + 1);
+
+    if let Some(idx) = cutoff {
+        scored.truncate(idx);
+    }
+
+    Ok(scored)
 }
 
 #[tauri::command]

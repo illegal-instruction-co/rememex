@@ -10,5 +10,5 @@
 .fastembed_cache/
 
 # Temporary files
-errors_ascii.txt
+*.txt
 *.log
