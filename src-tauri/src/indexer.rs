@@ -9,15 +9,14 @@ use futures::TryStreamExt;
 use lancedb::connection::Connection;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::Table;
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use arrow_array::{RecordBatch, RecordBatchIterator, StringArray, FixedSizeListArray, Float32Array, Array};
+use arrow_array::{RecordBatch, RecordBatchIterator, StringArray, FixedSizeListArray, Float32Array};
 use arrow_schema::{Field, Schema, DataType};
 
 const TABLE_NAME: &str = "file_embeddings";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct Record {
     path: String,
     content: String,
@@ -66,15 +65,8 @@ where
                 continue;
             }
 
-            // Simple chunking - in a real app use a proper splitter
-            // For now, we just index the whole file if small, or first 8000 chars
             let chunk_size = 2000;
-            let chunks: Vec<String> = text
-                .chars()
-                .collect::<Vec<char>>()
-                .chunks(chunk_size)
-                .map(|c| c.iter().collect::<String>())
-                .collect();
+            let chunks: Vec<String> = chunk_on_boundaries(&text, chunk_size);
 
             // Embed chunks
             // We only use the first few chunks to avoid massive processing for this lite version
@@ -258,4 +250,29 @@ async fn get_or_create_table(db: &Connection) -> Result<Table> {
         
         Ok(table)
     }
+}
+
+fn chunk_on_boundaries(text: &str, max_bytes: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < text.len() {
+        let mut end = (start + max_bytes).min(text.len());
+        // Don't slice in the middle of a multi-byte UTF-8 character
+        while end < text.len() && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end == text.len() {
+            chunks.push(text[start..].to_string());
+            break;
+        }
+        // Walk back to nearest newline or space
+        let slice = &text[start..end];
+        let split_at = slice.rfind('\n')
+            .or_else(|| slice.rfind(' '))
+            .map(|i| start + i + 1)
+            .unwrap_or(end);
+        chunks.push(text[start..split_at].to_string());
+        start = split_at;
+    }
+    chunks
 }
