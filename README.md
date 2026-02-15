@@ -62,7 +62,7 @@ It's just a JSON file.
 - Search is <50ms.
 
 ## disclaimer
-code is a bit messy aka "vibe coding". it works on my machine.
+code is a bit messy. it works on my machine.
 pull requests welcome if you want to fix my terrible react hooks.
 
 ## License
