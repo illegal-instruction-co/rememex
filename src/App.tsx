@@ -1,139 +1,27 @@
 import { useRef, useEffect, useState } from "react";
-import { FixedSizeList as List } from "react-window";
-import AutoSizer from "react-virtualized-auto-sizer";
+import { List, type ListImperativeAPI } from "react-window";
+import { AutoSizer } from "react-virtualized-auto-sizer";
+const AutoSizerAny = AutoSizer as any;
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
+import { open as openDialog, ask } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import {
+  FileText, FileCode, FileJson, Image as ImageIcon, File,
+  Loader2, FolderPlus, Search, Box, Plus, Trash2
+} from "lucide-react";
+import "./App.css";
 
-// ... (previous imports)
+interface SearchResult {
+  path: string;
+  snippet: string;
+  score: number;
+}
 
-// ... inside App function
-
-  const listRef = useRef<List>(null);
-
-  useEffect(() => {
-    if (listRef.current && results.length > 0) {
-      listRef.current.scrollToItem(selectedIndex);
-    }
-  }, [selectedIndex, results]);
-
-  // ... (previous code)
-
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const result = results[index];
-    const isSelected = index === selectedIndex;
-
-    return (
-      <div style={style} className="px-3">
-         <button
-            type="button"
-            key={result.path}
-            data-active={isSelected}
-            onClick={() => { setSelectedIndex(index); handleOpenFile(result.path); }}
-            className="result-item w-full text-left flex items-start gap-3 cursor-default outline-none select-none group h-full"
-          >
-            <div className="pt-0.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-              {getFileIcon(result.path)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-baseline gap-2">
-                <h4 className="text-body truncate leading-tight">
-                  {getFileName(result.path)}
-                </h4>
-                <span className={`text-[10px] font-sans px-1.5 rounded-full shrink-0 ${getScoreColor(result.score)} bg-opacity-20`}>
-                  {Math.round(result.score)}%
-                </span>
-              </div>
-              <div className="truncate text-caption mt-0.5 opacity-60">
-                {result.snippet || <span className="italic opacity-50">No preview available</span>}
-              </div>
-              <div className="truncate text-[10px] opacity-40 mt-0.5 font-mono">
-                {result.path}
-              </div>
-            </div>
-          </button>
-      </div>
-    );
-  };
-
-  return (
-    <div className="app-container flex-1 flex flex-col min-h-0 bg-transparent">
-
-      {/* Search Header */}
-      <div className="search-wrapper shrink-0">
-         {/* ... (same search header) */}
-         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[--color-text-tertiary] pointer-events-none" size={18} />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search files..."
-            className="search-input"
-            autoFocus
-          />
-          <button
-            onClick={handlePickFolder}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-[--color-control-fill-secondary] text-[--color-text-secondary] transition-colors"
-            title="Index Folder (Ctrl+O)"
-          >
-            {isIndexing ? <Loader2 className="animate-spin" size={18} /> : <FolderPlus size={18} />}
-          </button>
-        </div>
-      </div>
-
-      {/* Results Area */}
-      <div className="flex-1 overflow-hidden min-h-0 mt-2 pb-3" ref={resultsRef}>
-        {results.length === 0 && !query && (
-          <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
-            <Command size={48} strokeWidth={1} className="mb-4 opacity-50" />
-            <p className="text-body font-medium">Type to search</p>
-            <p className="text-caption mt-1">or use Ctrl+O to index a folder</p>
-          </div>
-        )}
-
-        {results.length === 0 && query && (
-          <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
-            <p className="text-body font-medium">No results found</p>
-            <p className="text-caption mt-1">Try a different keyword</p>
-          </div>
-        )}
-
-        {results.length > 0 && (
-            <AutoSizer>
-              {({ height, width }) => (
-                <List
-                  ref={listRef}
-                  height={height}
-                  width={width}
-                  itemCount={results.length}
-                  itemSize={78}
-                  className="result-list-virtualized"
-                >
-                  {Row}
-                </List>
-              )}
-            </AutoSizer>
-        )}
-      </div>
-
-        {/* ... (status bar) */}
-
-
-      {/* Status Bar Footer */}
-      <div className="status-bar shrink-0 h-8 px-6 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
-        <div className="flex items-center gap-3 overflow-hidden">
-          {status ? (
-            <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
-          ) : (
-            <span>{results.length} items</span>
-          )}
-        </div>
-        <div className="flex items-center gap-4 opacity-80">
-          <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↑↓</span> to navigate</span>
-          <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↵</span> to open</span>
-        </div>
-      </div>
-    </div>
-  );
+function getScoreColor(score: number): string {
+  if (score > 80) return "bg-green-500/10 text-green-400";
+  if (score > 50) return "bg-yellow-500/10 text-yellow-400";
+  return "bg-gray-500/10 text-gray-500";
 }
 
 function getFileName(path: string): string {
@@ -153,10 +41,377 @@ function getFileIcon(path: string) {
   }
 }
 
-function getScoreColor(score: number): string {
-  if (score > 80) return "bg-green-500/10 text-green-400";
-  if (score > 50) return "bg-yellow-500/10 text-yellow-400";
-  return "bg-gray-500/10 text-gray-500";
+interface RowData {
+  results: SearchResult[];
+  selectedIndex: number;
+  setSelectedIndex: (index: number) => void;
+  handleOpenFile: (path: string) => void;
+}
+
+const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpenFile }: { index: number; style: React.CSSProperties } & RowData) => {
+  const result = results[index];
+  const isSelected = index === selectedIndex;
+
+  return (
+    <div style={style} className="px-3">
+      <button
+        type="button"
+        key={result.path}
+        data-active={isSelected}
+        onClick={() => { setSelectedIndex(index); void handleOpenFile(result.path); }}
+        className="result-item w-full text-left flex items-start gap-3 cursor-default outline-none select-none group h-full"
+      >
+        <div className="pt-0.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+          {getFileIcon(result.path)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline gap-2">
+            <h4 className="text-body truncate leading-tight">
+              {getFileName(result.path)}
+            </h4>
+            <span className={`text-[10px] font-sans px-1.5 rounded-full shrink-0 ${getScoreColor(result.score)} bg-opacity-20`}>
+              {Math.round(result.score)}%
+            </span>
+          </div>
+          <div className="truncate text-caption mt-0.5 opacity-60">
+            {result.snippet || <span className="italic opacity-50">No preview available</span>}
+          </div>
+          <div className="truncate text-[10px] opacity-40 mt-0.5 font-mono">
+            {result.path}
+          </div>
+        </div>
+      </button>
+    </div>
+  );
+};
+
+function App() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [status, setStatus] = useState("");
+  const [isIndexing, setIsIndexing] = useState(false);
+
+  // Container State
+  const [containers, setContainers] = useState<string[]>([]);
+  const [activeContainer, setActiveContainer] = useState("Default");
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<ListImperativeAPI>(null);
+
+  useEffect(() => {
+    fetchContainers();
+  }, []);
+
+  async function fetchContainers() {
+    try {
+      const [list, active] = await invoke<[string[], string]>("get_containers");
+      setContainers(list);
+      setActiveContainer(active);
+    } catch (e) {
+      console.error("Failed to fetch containers", e);
+    }
+  }
+
+  async function handleCreateContainer() {
+    const name = await prompt("Enter container name (e.g., 'Work', 'Gaming'):");
+    if (!name?.trim()) return;
+
+    try {
+      await invoke("create_container", { name: name.trim() });
+      await fetchContainers();
+    } catch (e) {
+      alert(String(e));
+    }
+  }
+
+  async function handleDeleteContainer() {
+    if (activeContainer === "Default") {
+      alert("Cannot delete Default container.");
+      return;
+    }
+    const yes = await ask(`Are you sure you want to delete '${activeContainer}'? All indexed data will be lost forever.`, {
+      title: "Delete Container",
+      kind: "warning"
+    });
+
+    if (yes) {
+      try {
+        await invoke("delete_container", { name: activeContainer });
+        await fetchContainers();
+        setResults([]); // Clear results as container is gone
+      } catch (e) {
+        alert(String(e));
+      }
+    }
+  }
+
+  async function handleSwitchContainer(name: string) {
+    if (name === activeContainer) return;
+    try {
+      await invoke("set_active_container", { name });
+      setActiveContainer(name);
+      setResults([]); // Clear results from previous container
+      setQuery("");
+      setStatus(`Switched to ${name}`);
+      searchInputRef.current?.focus();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Helper prompt using browser API for simplicity as requested
+  const prompt = (msg: string) => Promise.resolve(globalThis.prompt(msg));
+
+
+  useEffect(() => {
+    if (listRef.current && results.length > 0) {
+      listRef.current.scrollToRow({ index: selectedIndex });
+    }
+  }, [selectedIndex, results]);
+
+
+
+
+  useEffect(() => {
+    searchInputRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ... existing key handlers ...
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (results[selectedIndex]) {
+          handleOpenFile(results[selectedIndex].path);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "o") {
+        e.preventDefault();
+        handlePickFolder();
+      } else if (e.shiftKey && e.key === "Delete") {
+        e.preventDefault();
+        // Context-aware delete
+        if (confirm(`Clear index for '${activeContainer}'?`)) {
+          handleResetIndex();
+        }
+      } else if (e.key === "Escape") {
+        if (query) setQuery("");
+      }
+    };
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [results, selectedIndex, query, activeContainer]);
+
+  useEffect(() => {
+    const unlistenProgress = listen<string>("indexing-progress", (event) => {
+      setStatus(`Indexing: ${getFileName(event.payload)}`);
+      setIsIndexing(true);
+    });
+
+    const unlistenModelLoaded = listen("model-loaded", () => {
+      setStatus("");
+      setIsIndexing(false);
+    });
+
+    const unlistenModelError = listen<string>("model-load-error", (event) => {
+      setStatus(`Model Error: ${event.payload}`);
+      setIsIndexing(false);
+    });
+
+    return () => {
+      unlistenProgress.then((f) => f());
+      unlistenModelLoaded.then((f) => f());
+      unlistenModelError.then((f) => f());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await invoke<SearchResult[]>("search", { query });
+        setResults(res);
+        setSelectedIndex(0);
+      } catch (err) {
+        setStatus(String(err));
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [query, activeContainer]);
+
+  async function handleResetIndex() {
+    try {
+      setStatus("Clearing index...");
+      setIsIndexing(true);
+      await invoke("reset_index");
+      setResults([]);
+      setStatus("Index cleared.");
+      setIsIndexing(false);
+    } catch (err) {
+      setStatus(String(err));
+      setIsIndexing(false);
+    }
+  }
+
+  async function handlePickFolder() {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: `Index folder into '${activeContainer}'`,
+      });
+      if (selected) {
+        setStatus("Starting indexing...");
+        setIsIndexing(true);
+        const msg = await invoke<string>("index_folder", { dir: selected });
+        setStatus(msg);
+        setIsIndexing(false);
+      }
+    } catch (err) {
+      setStatus(String(err));
+      setIsIndexing(false);
+    }
+  }
+
+  async function handleOpenFile(path: string) {
+    try {
+      await open(path);
+    } catch (e) {
+      console.error(e);
+      setStatus("Failed to open file");
+    }
+  }
+
+  // Helpers
+
+
+  return (
+    <div className="app-container">
+
+      {/* Sidebar */}
+      <div className="sidebar">
+        <div className="sidebar-header">
+          <span className="sidebar-title">Containers</span>
+          <button className="sidebar-btn" onClick={handleCreateContainer} title="Create Container">
+            <Plus size={14} />
+          </button>
+        </div>
+        <div className="container-list">
+          {containers.map(c => (
+            <button
+              key={c}
+              type="button"
+              className={`container-item w-full text-left ${activeContainer === c ? 'active' : ''}`}
+              onClick={() => handleSwitchContainer(c)}
+            >
+              <Box size={14} className="icon" />
+              <span className="truncate flex-1">{c}</span>
+            </button>
+          ))}
+        </div>
+        {activeContainer !== "Default" && (
+          <button
+            className="flex items-center justify-center gap-2 p-2 text-[11px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+            onClick={handleDeleteContainer}
+          >
+            <Trash2 size={12} /> Delete Container
+          </button>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="main-content">
+        {/* Search Header */}
+        <div className="search-wrapper shrink-0">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[--color-text-tertiary] pointer-events-none" size={18} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search in ${activeContainer}...`}
+              className="search-input"
+              autoFocus
+            />
+            <button
+              onClick={handlePickFolder}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-[--color-control-fill-secondary] text-[--color-text-secondary] transition-colors"
+              title={`Index Folder into ${activeContainer} (Ctrl+O)`}
+            >
+              {isIndexing ? <Loader2 className="animate-spin" size={18} /> : <FolderPlus size={18} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Results Area */}
+        <div className="flex-1 overflow-hidden min-h-0 mt-2 pb-3" ref={resultsRef}>
+          {results.length === 0 && !query && (
+            <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
+              <Box size={40} className="mb-4 opacity-40 text-[--color-fill-accent-default]" strokeWidth={1} />
+              <p className="text-body font-medium">{activeContainer}</p>
+              <p className="text-caption mt-1">Container Active</p>
+
+              <div className="mt-8 flex flex-col gap-2 items-center">
+                <p className="text-[10px] uppercase tracking-wider opacity-60">Shortcuts</p>
+                <div className="flex gap-4 opacity-50 text-xs font-mono">
+                  <span>Ctrl + O : Index</span>
+                  <span>Alt + Space : Toggle</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {results.length === 0 && query && (
+            <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
+              <p className="text-body font-medium">No results found</p>
+              <p className="text-caption mt-1">in {activeContainer}</p>
+            </div>
+          )}
+
+          {results.length > 0 && (
+            <AutoSizerAny>
+              {({ height, width }: { height: number; width: number }) => (
+                <List<RowData>
+                  listRef={listRef}
+                  style={{ width, height }}
+                  rowCount={results.length}
+                  rowHeight={78}
+                  rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
+                  className="result-list-virtualized"
+                  rowComponent={Row}
+                />
+              )}
+            </AutoSizerAny>
+          )}
+        </div>
+
+        {/* Status Bar Footer */}
+        <div className="status-bar shrink-0 h-8 px-6 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <span className="font-semibold text-[--color-fill-accent-default] opacity-90">{activeContainer}</span>
+            <span className="w-px h-3 bg-[--color-stroke-divider-default]"></span>
+            {status ? (
+              <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
+            ) : (
+              <span>{results.length} items</span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 opacity-80">
+            <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↑↓</span> to navigate</span>
+            <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↵</span> to open</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default App;

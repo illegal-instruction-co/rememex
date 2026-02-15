@@ -14,8 +14,6 @@ use walkdir::WalkDir;
 use arrow_array::{RecordBatch, RecordBatchIterator, StringArray, FixedSizeListArray, Float32Array};
 use arrow_schema::{Field, Schema, DataType};
 
-const TABLE_NAME: &str = "file_embeddings";
-
 #[derive(Debug)]
 struct Record {
     path: String,
@@ -35,8 +33,9 @@ pub fn load_model(model: EmbeddingModel, cache_dir: std::path::PathBuf) -> Resul
 
 pub async fn index_directory<F>(
     root_dir: &str,
+    table_name: &str,
     db: &Connection,
-    model: &TextEmbedding,
+    model: &mut TextEmbedding,
     progress_callback: F,
 ) -> Result<usize>
 where
@@ -49,7 +48,7 @@ where
     let dim = dummy_embedding.first().map(|v| v.len()).ok_or(anyhow!("Failed to determine model dimension"))?;
 
     // Ensure table exists with correct dimension
-    let table = get_or_create_table(db, dim).await?;
+    let table = get_or_create_table(db, table_name, dim).await?;
 
     for entry in WalkDir::new(root_dir)
         .into_iter()
@@ -159,11 +158,12 @@ fn create_record_batch(records: Vec<Record>) -> Result<RecordBatch> {
 
 pub async fn search_files(
     db: &Connection,
-    model: &TextEmbedding,
+    table_name: &str,
+    model: &mut TextEmbedding,
     query: &str,
     limit: usize,
 ) -> Result<Vec<(String, String, f32)>> {
-    let table = db.open_table(TABLE_NAME).execute().await;
+    let table = db.open_table(table_name).execute().await;
     
     // If table doesn't exist yet, return empty
     if table.is_err() {
@@ -227,17 +227,17 @@ pub async fn search_files(
     Ok(matches)
 }
 
-pub async fn reset_index(db_path: &Path) -> Result<()> {
+pub async fn reset_index(db_path: &Path, table_name: &str) -> Result<()> {
      let db = lancedb::connect(&db_path.to_string_lossy()).execute().await?;
-     let _ = db.drop_table(TABLE_NAME, &[]).await;
+     let _ = db.drop_table(table_name, &[]).await;
      Ok(())
 }
 
-async fn get_or_create_table(db: &Connection, dim: usize) -> Result<Table> {
-    let table_exists = db.table_names().execute().await?.contains(&TABLE_NAME.to_string());
+async fn get_or_create_table(db: &Connection, table_name: &str, dim: usize) -> Result<Table> {
+    let table_exists = db.table_names().execute().await?.contains(&table_name.to_string());
 
     if table_exists {
-        let table = db.open_table(TABLE_NAME).execute().await?;
+        let table = db.open_table(table_name).execute().await?;
         let schema = table.schema().await?;
         
         let mut schema_valid = false;
@@ -253,7 +253,7 @@ async fn get_or_create_table(db: &Connection, dim: usize) -> Result<Table> {
             return Ok(table);
         } else {
             // Schema mismatch (dimension changed), drop and recreate
-            let _ = db.drop_table(TABLE_NAME).await;
+            let _ = db.drop_table(table_name, &[]).await;
         }
     }
 
@@ -267,7 +267,7 @@ async fn get_or_create_table(db: &Connection, dim: usize) -> Result<Table> {
         ), false),
     ]));
     
-    let table = db.create_table(TABLE_NAME, 
+    let table = db.create_table(table_name, 
         RecordBatchIterator::new(vec![], schema)
     ).execute().await?;
     

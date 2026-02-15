@@ -2,9 +2,9 @@ mod indexer;
 
 use std::sync::Arc;
 use serde::Serialize;
-use tauri::{Emitter, Manager, Listener};
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
+use tauri::menu::{Menu, MenuItem, MenuEvent};
+use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 use fastembed::EmbeddingModel;
@@ -12,16 +12,33 @@ use std::fs;
 use std::io::Write;
 use serde::Deserialize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Config {
     embedding_model: String,
+    containers: Vec<String>,
+    active_container: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             embedding_model: "MultilingualE5Small".to_string(),
+            containers: vec!["Default".to_string()],
+            active_container: "Default".to_string(),
         }
+    }
+}
+
+struct ConfigState {
+    config: Arc<Mutex<Config>>,
+    path: std::path::PathBuf,
+}
+
+impl ConfigState {
+    async fn save(&self) -> Result<(), String> {
+        let config = self.config.lock().await;
+        let content = serde_json::to_string_pretty(&*config).map_err(|e| e.to_string())?;
+        fs::write(&self.path, content).map_err(|e| e.to_string())
     }
 }
 
@@ -33,13 +50,20 @@ fn get_embedding_model(name: &str) -> EmbeddingModel {
     }
 }
 
+fn get_table_name(container: &str) -> String {
+    // Sanitize container name to be safe for table name
+    // simple approach: c_<hex(name)> to be extremely safe
+    let hex_name: String = container.as_bytes().iter().map(|b| format!("{:02x}", b)).collect();
+    format!("c_{}", hex_name)
+}
+
 struct DbState {
     db: lancedb::Connection,
     path: std::path::PathBuf,
 }
 
 struct ModelState {
-    model: Option<Arc<fastembed::TextEmbedding>>,
+    model: Option<fastembed::TextEmbedding>,
     init_error: Option<String>,
 }
 
@@ -51,29 +75,99 @@ pub struct SearchResult {
 }
 
 #[tauri::command]
+async fn get_containers(
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<(Vec<String>, String), String> {
+    let config = config_state.config.lock().await;
+    Ok((config.containers.clone(), config.active_container.clone()))
+}
+
+#[tauri::command]
+async fn create_container(
+    name: String,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    let mut config = config_state.config.lock().await;
+    if config.containers.contains(&name) {
+        return Err("Container already exists".to_string());
+    }
+    config.containers.push(name.clone());
+    // Persist
+    drop(config); // unlock to save
+    config_state.save().await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_container(
+    name: String,
+    config_state: tauri::State<'_, ConfigState>,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+) -> Result<(), String> {
+    {
+        let mut config = config_state.config.lock().await;
+        if name == "Default" {
+             return Err("Cannot delete Default container".to_string());
+        }
+        if config.active_container == name {
+             config.active_container = "Default".to_string();
+        }
+        config.containers.retain(|c| c != &name);
+    } // drop lock
+    
+    config_state.save().await?;
+
+    // Drop table
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    let table_name = get_table_name(&name);
+    let _ = db.drop_table(&table_name, &[]).await;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_active_container(
+    name: String,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    let mut config = config_state.config.lock().await;
+    if !config.containers.contains(&name) {
+        return Err("Container does not exist".to_string());
+    }
+    config.active_container = name;
+    drop(config);
+    config_state.save().await?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn search(
     query: String,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
-    // 1. Acquire DB connection and release lock immediately
+    // Get active container
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+
     let db = {
         let guard = db_state.lock().await;
         guard.db.clone()
     };
 
-    // 2. Acquire Model and release lock immediately
-    let model = {
-        let guard = model_state.lock().await;
-        if let Some(err) = &guard.init_error {
-            return Err(format!("Model init failed: {}", err));
-        }
-        guard.model.clone().ok_or("Model is still loading...")?
-    };
+    let mut guard = model_state.lock().await;
+    if let Some(err) = &guard.init_error {
+        return Err(format!("Model init failed: {}", err));
+    }
+    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
     
-    // 3. Perform heavy search operation WITHOUT holding any locks
-    // The `model` is Arc<TextEmbedding>, so we can pass &*model
-    let results = indexer::search_files(&db, &model, &query, 5)
+    let results = indexer::search_files(&db, &table_name, model, &query, 5)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -94,27 +188,27 @@ async fn index_folder(
     dir: String,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    config_state: tauri::State<'_, ConfigState>,
 ) -> Result<String, String> {
-    // 1. Acquire DB connection and release lock immediately
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+
     let db = {
         let guard = db_state.lock().await;
         guard.db.clone()
     };
 
-    // 2. Acquire Model and release lock immediately
-    let model = {
-        let guard = model_state.lock().await;
-        if let Some(err) = &guard.init_error {
-            return Err(format!("Model init failed: {}", err));
-        }
-        guard.model.clone().ok_or("Model is still loading...")?
-    };
+    let mut guard = model_state.lock().await;
+    if let Some(err) = &guard.init_error {
+        return Err(format!("Model init failed: {}", err));
+    }
+    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
     
     let app_handle = app.clone();
 
-    // 3. Perform heavy indexing operation WITHOUT holding any locks
-    // We pass &model (which is &TextEmbedding)
-    let count = indexer::index_directory(&dir, &db, &model, move |path| {
+    let count = indexer::index_directory(&dir, &table_name, &db, model, move |path| {
         let _ = app_handle.emit("indexing-progress", path);
     })
     .await
@@ -126,12 +220,18 @@ async fn index_folder(
 #[tauri::command]
 async fn reset_index(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    config_state: tauri::State<'_, ConfigState>,
 ) -> Result<String, String> {
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+
     let path = {
         let guard = db_state.lock().await;
         guard.path.clone()
     };
-    indexer::reset_index(&path)
+    indexer::reset_index(&path, &table_name)
         .await
         .map_err(|e| e.to_string())?;
     Ok("Index cleared successfully".to_string())
@@ -142,7 +242,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_tray::init())
+
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut(Shortcut::new(Some(Modifiers::ALT), Code::Space))
@@ -198,7 +298,7 @@ pub fn run() {
                 .menu(&menu)
                 .icon(app.default_window_icon().unwrap().clone())
                 .show_menu_on_left_click(false) 
-                .on_menu_event(move |app, event| {
+                .on_menu_event(move |app: &tauri::AppHandle, event: MenuEvent| {
                     match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
@@ -210,7 +310,7 @@ pub fn run() {
                         _ => {}
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
+                .on_tray_icon_event(|tray: &TrayIcon, event: TrayIconEvent| {
                     if let TrayIconEvent::Click { .. } = event {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
@@ -239,6 +339,12 @@ pub fn run() {
 
             let model_enum = get_embedding_model(&config.embedding_model);
             
+            // Manage Config State
+            app.manage(ConfigState {
+                config: Arc::new(Mutex::new(config)),
+                path: config_path,
+            });
+
             // Initialize with None
             let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None }));
             app.manage(model_state.clone());
@@ -270,8 +376,8 @@ pub fn run() {
                                 let _ = writeln!(file, "Model loaded successfully");
                             }
                             let mut state = model_state.lock().await;
-                            // Store as Arc
-                            state.model = Some(Arc::new(model));
+                            // Store directly
+                            state.model = Some(model);
                             state.init_error = None;
                             let _ = app_handle.emit("model-loaded", ());
                             return; 
@@ -295,7 +401,7 @@ pub fn run() {
 
             // Cleanup legacy cache
             if let Ok(home_dir) = app.path().home_dir() {
-                 let log_path_cleanup = app_data.join("recall.log");
+                 let _log_path_cleanup = app_data.join("recall.log");
                  tauri::async_runtime::spawn(async move {
                      let legacy_cache = home_dir.join(".fastembed_cache");
                      if legacy_cache.exists() {
@@ -306,7 +412,15 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![search, index_folder, reset_index])
+        .invoke_handler(tauri::generate_handler![
+            search, 
+            index_folder, 
+            reset_index,
+            get_containers,
+            create_container,
+            delete_container,
+            set_active_container
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

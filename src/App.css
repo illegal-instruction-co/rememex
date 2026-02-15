@@ -82,7 +82,7 @@ body {
   /* We don't verify background here, Mica handles it */
   height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   border: 1px solid var(--color-stroke-surface-default);
   border-radius: 8px;
   /* Match standard window radius if not maximized */
@@ -203,6 +203,98 @@ body {
 .text-subtitle {
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+/* Sidebar */
+.sidebar {
+  width: 200px;
+  background: rgba(0, 0, 0, 0.2);
+  border-right: 1px solid var(--color-stroke-divider-default);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-stroke-divider-default);
+}
+
+.sidebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-btn {
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  background: transparent;
+}
+
+.sidebar-btn:hover {
+  background: var(--color-control-fill-secondary);
+  color: var(--color-text-primary);
+}
+
+.container-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.container-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.1s;
+  border: 1px solid transparent;
+}
+
+.container-item:hover {
+  background: var(--color-control-fill-default);
+  color: var(--color-text-primary);
+}
+
+.container-item.active {
+  background: var(--color-control-fill-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-stroke-surface-default);
+  font-weight: 500;
+}
+
+.container-item .icon {
+  opacity: 0.7;
+}
+
+.container-item.active .icon {
+  opacity: 1;
+  color: var(--color-fill-accent-default);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 /* Footer Status Bar - Cleaner */

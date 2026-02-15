@@ -1,6 +1,6 @@
 [package]
 name = "recall-lite"
-version = "1.0.5"
+version = "1.0.7"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
@@ -29,7 +29,7 @@ futures = { version = "0.3", default-features = false, features = ["alloc"] }
 anyhow = "1"
 mimalloc = { version = "0.1", default-features = false }
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-tray = "2"
+
 window-vibrancy = "0.7.1"
 
 [profile.release]
