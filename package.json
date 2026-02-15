@@ -13,9 +13,13 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
+    "@types/react-virtualized-auto-sizer": "^1.0.4",
+    "@types/react-window": "^1.8.8",
     "lucide-react": "^0.564.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-virtualized-auto-sizer": "^2.0.3",
+    "react-window": "^2.2.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

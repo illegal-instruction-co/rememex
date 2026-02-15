@@ -2,7 +2,9 @@ mod indexer;
 
 use std::sync::Arc;
 use serde::Serialize;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, Listener};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 use fastembed::EmbeddingModel;
@@ -37,7 +39,7 @@ struct DbState {
 }
 
 struct ModelState {
-    model: Option<fastembed::TextEmbedding>,
+    model: Option<Arc<fastembed::TextEmbedding>>,
     init_error: Option<String>,
 }
 
@@ -54,16 +56,24 @@ async fn search(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
 ) -> Result<Vec<SearchResult>, String> {
-    let db = db_state.lock().await;
-    let mut model_guard = model_state.lock().await;
+    // 1. Acquire DB connection and release lock immediately
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
 
-    if let Some(err) = &model_guard.init_error {
-        return Err(format!("Model init failed: {}", err));
-    }
-
-    let model = model_guard.model.as_mut().ok_or("Model is still loading...")?;
+    // 2. Acquire Model and release lock immediately
+    let model = {
+        let guard = model_state.lock().await;
+        if let Some(err) = &guard.init_error {
+            return Err(format!("Model init failed: {}", err));
+        }
+        guard.model.clone().ok_or("Model is still loading...")?
+    };
     
-    let results = indexer::search_files(&db.db, model, &query, 5)
+    // 3. Perform heavy search operation WITHOUT holding any locks
+    // The `model` is Arc<TextEmbedding>, so we can pass &*model
+    let results = indexer::search_files(&db, &model, &query, 5)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -85,18 +95,26 @@ async fn index_folder(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
 ) -> Result<String, String> {
-    let db = db_state.lock().await;
-    let mut model_guard = model_state.lock().await;
+    // 1. Acquire DB connection and release lock immediately
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
 
-    if let Some(err) = &model_guard.init_error {
-        return Err(format!("Model init failed: {}", err));
-    }
-
-    let model = model_guard.model.as_mut().ok_or("Model is still loading...")?;
+    // 2. Acquire Model and release lock immediately
+    let model = {
+        let guard = model_state.lock().await;
+        if let Some(err) = &guard.init_error {
+            return Err(format!("Model init failed: {}", err));
+        }
+        guard.model.clone().ok_or("Model is still loading...")?
+    };
     
     let app_handle = app.clone();
 
-    let count = indexer::index_directory(&dir, &db.db, model, move |path| {
+    // 3. Perform heavy indexing operation WITHOUT holding any locks
+    // We pass &model (which is &TextEmbedding)
+    let count = indexer::index_directory(&dir, &db, &model, move |path| {
         let _ = app_handle.emit("indexing-progress", path);
     })
     .await
@@ -109,8 +127,11 @@ async fn index_folder(
 async fn reset_index(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
 ) -> Result<String, String> {
-    let db = db_state.lock().await;
-    indexer::reset_index(&db.path)
+    let path = {
+        let guard = db_state.lock().await;
+        guard.path.clone()
+    };
+    indexer::reset_index(&path)
         .await
         .map_err(|e| e.to_string())?;
     Ok("Index cleared successfully".to_string())
@@ -121,6 +142,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_tray::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut(Shortcut::new(Some(Modifiers::ALT), Code::Space))
@@ -163,11 +185,46 @@ pub fn run() {
             {
                 use window_vibrancy::apply_mica;
                 if let Some(window) = app.get_webview_window("main") {
-                    // Apply Mica effect (Windows 11 default)
-                    // The second argument is for Dark Mode (Some(true) = Dark, Some(false) = Light, None = System)
                     let _ = apply_mica(&window, Some(true));
                 }
             }
+
+            // --- System Tray Setup ---
+            let show_i = MenuItem::with_id(app, "show", "Show Recall", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let _tray = TrayIconBuilder::with_id("tray")
+                .menu(&menu)
+                .icon(app.default_window_icon().unwrap().clone())
+                .show_menu_on_left_click(false) 
+                .on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "quit" => app.exit(0),
+                        "show" => {
+                             if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                             }
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                             if window.is_visible().unwrap_or(false) {
+                                 let _ = window.hide();
+                             } else {
+                                 let _ = window.show();
+                                 let _ = window.set_focus();
+                             }
+                        }
+                    }
+                })
+                .build(app)?;
+            // -------------------------
 
             let config_path = app_data.join("config.json");
             let config = if config_path.exists() {
@@ -207,34 +264,28 @@ pub fn run() {
 
                 while attempts < max_attempts {
                     attempts += 1;
-                    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                        let _ = writeln!(file, "Attempt {}/{}...", attempts, max_attempts);
-                    }
-
-                    // Clone arguments because load_model takes ownership
                     match indexer::load_model(model_enum.clone(), models_path.clone()) {
                         Ok(model) => {
                             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
                                 let _ = writeln!(file, "Model loaded successfully");
                             }
                             let mut state = model_state.lock().await;
-                            state.model = Some(model);
+                            // Store as Arc
+                            state.model = Some(Arc::new(model));
                             state.init_error = None;
                             let _ = app_handle.emit("model-loaded", ());
-                            return; // Success, exit task
+                            return; 
                         }
                         Err(e) => {
                              if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
                                 let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
                              }
                              last_error = Some(e);
-                             // Wait 2 seconds before retrying
                              tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         }
                     }
                 }
 
-                // If loop finishes, all attempts failed
                 if let Some(e) = last_error {
                      let mut state = model_state.lock().await;
                      state.init_error = Some(e.to_string());
@@ -248,9 +299,6 @@ pub fn run() {
                  tauri::async_runtime::spawn(async move {
                      let legacy_cache = home_dir.join(".fastembed_cache");
                      if legacy_cache.exists() {
-                         if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path_cleanup) {
-                             let _ = writeln!(file, "Removing legacy cache: {:?}", legacy_cache);
-                         }
                          let _ = fs::remove_dir_all(&legacy_cache);
                      }
                  });

@@ -36,7 +36,7 @@ pub fn load_model(model: EmbeddingModel, cache_dir: std::path::PathBuf) -> Resul
 pub async fn index_directory<F>(
     root_dir: &str,
     db: &Connection,
-    model: &mut TextEmbedding,
+    model: &TextEmbedding,
     progress_callback: F,
 ) -> Result<usize>
 where
@@ -44,8 +44,12 @@ where
 {
     let mut files_indexed = 0;
     
-    // Ensure table exists
-    let table = get_or_create_table(db).await?;
+    // Determine vector dimension dynamically
+    let dummy_embedding = model.embed(vec!["test".to_string()], None)?;
+    let dim = dummy_embedding.first().map(|v| v.len()).ok_or(anyhow!("Failed to determine model dimension"))?;
+
+    // Ensure table exists with correct dimension
+    let table = get_or_create_table(db, dim).await?;
 
     for entry in WalkDir::new(root_dir)
         .into_iter()
@@ -68,18 +72,15 @@ where
 
             let chunk_size = 2000;
             let chunks: Vec<String> = chunk_on_boundaries(&text, chunk_size);
-
-            // Embed chunks
-            // We only use the first few chunks to avoid massive processing for this lite version
-            let chunks_to_embed = chunks.into_iter().take(5).collect::<Vec<_>>();
             
-            if chunks_to_embed.is_empty() {
+            // Embed ALL chunks (removed .take(5) limit)
+            if chunks.is_empty() {
                 continue;
             }
 
-            let embeddings = model.embed(chunks_to_embed.clone(), None)?;
+            let embeddings = model.embed(chunks.clone(), None)?;
 
-            let records: Vec<Record> = chunks_to_embed
+            let records: Vec<Record> = chunks
                 .into_iter()
                 .zip(embeddings)
                 .map(|(text_chunk, vector)| Record {
@@ -158,7 +159,7 @@ fn create_record_batch(records: Vec<Record>) -> Result<RecordBatch> {
 
 pub async fn search_files(
     db: &Connection,
-    model: &mut TextEmbedding,
+    model: &TextEmbedding,
     query: &str,
     limit: usize,
 ) -> Result<Vec<(String, String, f32)>> {
@@ -232,25 +233,45 @@ pub async fn reset_index(db_path: &Path) -> Result<()> {
      Ok(())
 }
 
-async fn get_or_create_table(db: &Connection) -> Result<Table> {
-    if db.table_names().execute().await?.contains(&TABLE_NAME.to_string()) {
-        Ok(db.open_table(TABLE_NAME).execute().await?)
-    } else {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("path", DataType::Utf8, false),
-            Field::new("content", DataType::Utf8, false),
-            Field::new("vector", DataType::FixedSizeList(
-                Arc::new(Field::new("item", DataType::Float32, true)),
-                 384 // MultilingualE5Small dim
-            ), false),
-        ]));
+async fn get_or_create_table(db: &Connection, dim: usize) -> Result<Table> {
+    let table_exists = db.table_names().execute().await?.contains(&TABLE_NAME.to_string());
+
+    if table_exists {
+        let table = db.open_table(TABLE_NAME).execute().await?;
+        let schema = table.schema().await?;
         
-         let table = db.create_table(TABLE_NAME, 
-            RecordBatchIterator::new(vec![], schema)
-        ).execute().await?;
-        
-        Ok(table)
+        let mut schema_valid = false;
+        if let Some(field) = schema.field_with_name("vector").ok() {
+            if let DataType::FixedSizeList(_, size) = field.data_type() {
+                if *size == dim as i32 {
+                    schema_valid = true;
+                }
+            }
+        }
+
+        if schema_valid {
+            return Ok(table);
+        } else {
+            // Schema mismatch (dimension changed), drop and recreate
+            let _ = db.drop_table(TABLE_NAME).await;
+        }
     }
+
+    // Create new table
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("path", DataType::Utf8, false),
+        Field::new("content", DataType::Utf8, false),
+        Field::new("vector", DataType::FixedSizeList(
+            Arc::new(Field::new("item", DataType::Float32, true)),
+            dim as i32
+        ), false),
+    ]));
+    
+    let table = db.create_table(TABLE_NAME, 
+        RecordBatchIterator::new(vec![], schema)
+    ).execute().await?;
+    
+    Ok(table)
 }
 
 fn chunk_on_boundaries(text: &str, max_bytes: usize) -> Vec<String> {
