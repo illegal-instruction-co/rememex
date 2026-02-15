@@ -27,8 +27,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are usually installed on windows by default 
-          # but we can be explicit.
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
@@ -45,6 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
+          args: --verbose
           releaseName: "Recall Lite ${{ github.ref_name }}"
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
