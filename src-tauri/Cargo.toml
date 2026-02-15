@@ -28,8 +28,8 @@ walkdir = "2"
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 anyhow = "1"
 mimalloc = { version = "0.1", default-features = false }
-tauri-plugin-global-shortcut = "2.3.1"
-windows = { version = "0.58", features = ["Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Storage", "Globalization"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-tray = "2"
 window-vibrancy = "0.7.1"
 
 [profile.release]
