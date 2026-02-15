@@ -19,9 +19,9 @@ interface SearchResult {
 }
 
 function getScoreColor(score: number): string {
-  if (score > 80) return "bg-green-500/10 text-green-400";
-  if (score > 50) return "bg-yellow-500/10 text-yellow-400";
-  return "bg-gray-500/10 text-gray-500";
+  if (score > 75) return "bg-green-500/10 text-green-400";
+  if (score > 60) return "bg-yellow-500/10 text-yellow-400";
+  return "bg-orange-500/10 text-orange-400";
 }
 
 function getFileName(path: string): string {

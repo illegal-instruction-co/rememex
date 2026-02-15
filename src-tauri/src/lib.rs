@@ -208,21 +208,21 @@ async fn search(
 
     let mut scored: Vec<SearchResult> = results
         .into_iter()
-        .map(|(path, snippet, cosine_dist)| {
+        .filter_map(|(path, snippet, cosine_dist)| {
             let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
-            SearchResult {
-                path,
-                snippet,
-                score: similarity * 100.0,
+            let calibrated = similarity.powi(3) * 100.0;
+            if calibrated >= 55.0 {
+                Some(SearchResult { path, snippet, score: calibrated })
+            } else {
+                None
             }
         })
-        .filter(|r| r.score >= 50.0)
         .collect();
 
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     let cutoff = scored.windows(2)
-        .position(|pair| pair[0].score - pair[1].score > 15.0)
+        .position(|pair| pair[0].score - pair[1].score > 12.0)
         .map(|i| i + 1);
 
     if let Some(idx) = cutoff {
