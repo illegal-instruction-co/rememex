@@ -1,12 +1,11 @@
 # Recall Lite (local-mind)
 
-![Animation](https://github.com/user-attachments/assets/6042c8ba-48df-4bc5-a8af-5bd8fef9b669)
-
 Windows search sucks. Copilot is creepy. I needed something that finds my sh*t without sending my screen to the cloud.
 
 So I built this.
 
-![Demo](demo.gif)
+![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
+
 
 ## What is this?
 It's a **local-first** semantic search engine.
