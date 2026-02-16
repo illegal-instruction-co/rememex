@@ -90,15 +90,24 @@ where
     }
 
     if pending_chunks.is_empty() {
+        progress_callback(total_files, total_files, "Done -- no new files".to_string());
         return Ok(0);
     }
 
     let file_set: std::collections::HashSet<&str> = pending_chunks.iter().map(|c| c.path.as_str()).collect();
     let files_indexed = file_set.len();
 
-    for batch_start in (0..pending_chunks.len()).step_by(EMBED_BATCH_SIZE) {
+    let total_batches = (pending_chunks.len() + EMBED_BATCH_SIZE - 1) / EMBED_BATCH_SIZE;
+
+    for (batch_idx, batch_start) in (0..pending_chunks.len()).step_by(EMBED_BATCH_SIZE).enumerate() {
         let batch_end = (batch_start + EMBED_BATCH_SIZE).min(pending_chunks.len());
         let batch_chunks = &pending_chunks[batch_start..batch_end];
+
+        progress_callback(
+            total_files,
+            total_files,
+            format!("Embedding batch {}/{}", batch_idx + 1, total_batches),
+        );
 
         let texts: Vec<String> = batch_chunks.iter().map(|c| c.content.clone()).collect();
         let embeddings = embedding::embed_passages(model, texts)?;
@@ -123,9 +132,11 @@ where
     }
 
     if files_seen >= ANN_INDEX_THRESHOLD {
+        progress_callback(total_files, total_files, "Building vector index...".to_string());
         let _ = db::build_ann_index(&table).await;
     }
 
+    progress_callback(total_files, total_files, "Building search index...".to_string());
     let _ = db::build_fts_index(&table).await;
 
     Ok(files_indexed)

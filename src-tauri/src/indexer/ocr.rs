@@ -194,8 +194,10 @@ fn build_date_string(dt: NaiveDateTime) -> String {
 }
 
 fn reverse_geocode(lat: f64, lon: f64) -> String {
-    let geocoder = ReverseGeocoder::new();
-    let result = geocoder.search((lat, lon));
+    use std::sync::LazyLock;
+    static GEOCODER: LazyLock<ReverseGeocoder> = LazyLock::new(ReverseGeocoder::new);
+
+    let result = GEOCODER.search((lat, lon));
 
     let city = &result.record.name;
     let admin = &result.record.admin1;
