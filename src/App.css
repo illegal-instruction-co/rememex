@@ -347,6 +347,32 @@ body {
   padding: 2px 0;
 }
 
+.reindex-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.reindex-btn:hover {
+  color: var(--color-fill-accent-default);
+  border-color: rgba(96, 205, 255, 0.3);
+  background: rgba(96, 205, 255, 0.06);
+}
+
+.reindex-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .main-content {
   flex: 1;
   display: flex;

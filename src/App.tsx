@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   FileText, FileCode, FileJson, Image as ImageIcon, File,
   Loader2, FolderPlus, Search, Box, Plus, Trash2, FolderOpen,
-  PanelLeftClose, PanelLeftOpen, Folder
+  PanelLeftClose, PanelLeftOpen, Folder, RefreshCw
 } from "lucide-react";
 import { useModal, ModalProvider } from "./Modal";
 import "./App.css";
@@ -290,6 +290,32 @@ function App() {
     }
   }
 
+  async function handleReindexAll() {
+    const activeInfo = containers.find(c => c.name === activeContainer);
+    if (!activeInfo || activeInfo.indexed_paths.length === 0) return;
+
+    const result = await modal.confirm({
+      title: "Rebuild Index",
+      message: `This will re-index all ${activeInfo.indexed_paths.length} folder(s) in '${activeContainer}' with improved embeddings. This may take a moment.`,
+      icon: "info",
+      confirmText: "Rebuild",
+    });
+
+    if (!result.confirmed) return;
+
+    try {
+      setStatus("Rebuilding index...");
+      setIsIndexing(true);
+      setResults([]);
+      const msg = await invoke<string>("reindex_all");
+      setStatus(msg);
+      setIsIndexing(false);
+    } catch (err) {
+      setStatus(String(err));
+      setIsIndexing(false);
+    }
+  }
+
   async function handlePickFolder() {
     try {
       const selected = await openDialog({
@@ -367,14 +393,25 @@ function App() {
                           <span>Indexed Folders</span>
                         </div>
                         {c.indexed_paths.length > 0 ? (
-                          <div className="indexed-paths">
-                            {c.indexed_paths.map(p => (
-                              <div key={p} className="indexed-path-item" title={p}>
-                                <FolderOpen size={10} className="shrink-0 opacity-50" />
-                                <span className="truncate">{p.split(/[\\/]/).slice(-2).join('/')}</span>
-                              </div>
-                            ))}
-                          </div>
+                          <>
+                            <div className="indexed-paths">
+                              {c.indexed_paths.map(p => (
+                                <div key={p} className="indexed-path-item" title={p}>
+                                  <FolderOpen size={10} className="shrink-0 opacity-50" />
+                                  <span className="truncate">{p.split(/[\\/]/).slice(-2).join('/')}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              className="reindex-btn"
+                              onClick={handleReindexAll}
+                              disabled={isIndexing}
+                              title="Re-index all folders with improved embeddings"
+                            >
+                              <RefreshCw size={10} className={isIndexing ? 'animate-spin' : ''} />
+                              <span>Rebuild Index</span>
+                            </button>
+                          </>
                         ) : (
                           <div className="indexed-paths-empty">
                             No folders indexed yet

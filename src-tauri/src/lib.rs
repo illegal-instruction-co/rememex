@@ -299,6 +299,57 @@ async fn reset_index(
     Ok("Index cleared successfully".to_string())
 }
 
+#[tauri::command]
+async fn reindex_all(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<String, String> {
+    let (table_name, paths) = {
+        let config = config_state.config.lock().await;
+        let info = config.containers.get(&config.active_container)
+            .ok_or("Active container not found")?;
+        (get_table_name(&config.active_container), info.indexed_paths.clone())
+    };
+
+    if paths.is_empty() {
+        return Err("No folders to reindex".to_string());
+    }
+
+    let db_path = {
+        let guard = db_state.lock().await;
+        guard.path.clone()
+    };
+    indexer::reset_index(&db_path, &table_name)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+
+    let mut guard = model_state.lock().await;
+    if let Some(err) = &guard.init_error {
+        return Err(format!("Model init failed: {}", err));
+    }
+    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
+
+    let mut total = 0;
+    for dir in &paths {
+        let app_handle = app.clone();
+        let count = indexer::index_directory(dir, &table_name, &db, model, move |path| {
+            let _ = app_handle.emit("indexing-progress", path);
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        total += count;
+    }
+
+    Ok(format!("Reindexed {} files from {} folders", total, paths.len()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -509,6 +560,7 @@ pub fn run() {
             search,
             index_folder,
             reset_index,
+            reindex_all,
             get_containers,
             create_container,
             delete_container,
