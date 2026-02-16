@@ -211,7 +211,7 @@ async fn search(
         .filter_map(|(path, snippet, cosine_dist)| {
             let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
             let calibrated = similarity.powi(3) * 100.0;
-            if calibrated >= 55.0 {
+            if calibrated >= 60.0 {
                 Some(SearchResult { path, snippet, score: calibrated })
             } else {
                 None
