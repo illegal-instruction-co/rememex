@@ -1,9 +1,14 @@
 import {
     Box, Plus, Trash2, FolderOpen, Folder, RefreshCw,
-    PanelLeftClose, PanelLeftOpen,
+    PanelLeftClose, PanelLeftOpen, Globe,
 } from "lucide-react";
 import type { ContainerItem } from "../types";
 import { useLocale } from "../i18n";
+
+const localeLabels: Record<string, string> = {
+    en: "English",
+    tr: "Türkçe",
+};
 
 interface SidebarProps {
     containers: ContainerItem[];
@@ -22,7 +27,12 @@ export default function Sidebar({
     onToggleSidebar, onSwitchContainer, onCreateContainer,
     onDeleteContainer, onReindexAll,
 }: SidebarProps) {
-    const { t } = useLocale();
+    const { t, locale, setLocale, availableLocales } = useLocale();
+
+    function cycleLocale() {
+        const idx = availableLocales.indexOf(locale);
+        setLocale(availableLocales[(idx + 1) % availableLocales.length]);
+    }
 
     return (
         <div className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
@@ -101,6 +111,10 @@ export default function Sidebar({
                             <Trash2 size={12} /> {t('sidebar_delete')}
                         </button>
                     )}
+                    <button className="locale-switcher" onClick={cycleLocale} title={localeLabels[locale] ?? locale}>
+                        <Globe size={12} />
+                        <span>{locale.toUpperCase()}</span>
+                    </button>
                 </>
             )}
         </div>

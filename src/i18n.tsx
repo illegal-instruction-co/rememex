@@ -48,7 +48,7 @@ export function LocaleProvider({ children }: Readonly<{ children: React.ReactNod
             let str = locales[currentLocale]?.[key] || locales.en[key] || key;
             if (vars) {
                 for (const [k, v] of Object.entries(vars)) {
-                    str = str.replaceAll(new RegExp(String.raw`\{\{${k}\}\}`), String(v));
+                    str = str.replaceAll(`{{${k}}}`, String(v));
                 }
             }
             return str;

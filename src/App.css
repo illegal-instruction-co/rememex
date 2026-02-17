@@ -406,3 +406,26 @@ body {
   transition: width 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 0 6px rgba(96, 205, 255, 0.4);
 }
+
+.locale-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.locale-switcher:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-control-fill-default);
+  border-color: var(--color-control-stroke-default);
+}
