@@ -63,6 +63,9 @@ logs: `%AppData%\com.recall-lite.app\recall.log`
 - auto-migrates old configs, retries model load 3x, cleans up legacy cache
 - release builds only. debug is 10x slower thats normal
 
+## MCP server
+standalone binary that lets any AI client (cursor, claude desktop, copilot) search your indexed files via MCP protocol. see [MCP.md](MCP.md) for setup and usage.
+
 ## roadmap
 see [ROADMAP.md](ROADMAP.md).
 

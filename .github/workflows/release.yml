@@ -61,3 +61,15 @@ jobs:
           releaseBody: ${{ steps.tag_msg.outputs.message }}
           releaseDraft: false
           prerelease: false
+
+      - name: Build MCP server binary
+        run: cargo build --bin recall-mcp --release
+        working-directory: src-tauri
+
+      - name: Upload MCP binary to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: src-tauri/target/release/recall-mcp.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

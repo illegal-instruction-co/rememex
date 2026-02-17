@@ -1,7 +1,7 @@
 mod commands;
-mod config;
-mod indexer;
-mod state;
+pub mod config;
+pub mod indexer;
+pub mod state;
 
 use std::collections::HashMap;
 use std::sync::Arc;
