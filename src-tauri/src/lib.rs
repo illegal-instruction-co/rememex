@@ -2,6 +2,7 @@ mod commands;
 pub mod config;
 pub mod indexer;
 pub mod state;
+mod watcher;
 
 
 use std::sync::Arc;
@@ -133,6 +134,7 @@ pub fn run() {
 
             let reranker_models_path = models_path.clone();
             let reranker_log = log_path.clone();
+            let watcher_model_state = model_state.clone();
 
             tauri::async_runtime::spawn(async move {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -206,6 +208,22 @@ pub fn run() {
                         let _ = fs::remove_dir_all(&legacy_cache);
                     }
                 });
+            }
+
+            let config_state_ref: tauri::State<ConfigState> = app.state();
+            let db_for_watcher = {
+                let guard: tauri::State<Arc<Mutex<state::DbState>>> = app.state();
+                let g = guard.blocking_lock();
+                g.db.clone()
+            };
+            let _watcher_handle = watcher::start_from_config(
+                config_state_ref.inner(),
+                db_for_watcher,
+                watcher_model_state,
+                app.handle().clone(),
+            );
+            if let Some(handle) = _watcher_handle {
+                app.manage(Arc::new(Mutex::new(Some(handle))));
             }
 
             Ok(())

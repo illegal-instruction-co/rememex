@@ -296,14 +296,6 @@ pub async fn reindex_all(
         return Err("No folders to reindex".to_string());
     }
 
-    let db_path = {
-        let guard = db_state.lock().await;
-        guard.path.clone()
-    };
-    indexer::reset_index(&db_path, &table_name)
-        .await
-        .map_err(|e| e.to_string())?;
-
     let db = {
         let guard = db_state.lock().await;
         guard.db.clone()
