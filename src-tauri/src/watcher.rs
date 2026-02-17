@@ -73,6 +73,7 @@ fn start_watcher(
     }
 
     let rt = tokio::runtime::Handle::current();
+    let indexing_lock = Arc::new(Mutex::new(()));
     std::thread::spawn(move || {
         while let Ok(events) = rx.recv() {
             let mut changed: HashSet<PathBuf> = HashSet::new();
@@ -105,11 +106,14 @@ fn start_watcher(
             let ms = model_state.clone();
             let tn = table_name.clone();
             let app = app.clone();
+            let lock = indexing_lock.clone();
             let changed: Vec<PathBuf> = changed.into_iter().collect();
             let deleted: Vec<PathBuf> = deleted.into_iter().collect();
             let total = changed.len() + deleted.len();
 
             rt.spawn(async move {
+                let _guard = lock.lock().await;
+
                 let _ = app.emit("indexing-progress", IndexingProgress {
                     current: 0,
                     total,
