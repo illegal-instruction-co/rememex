@@ -27,38 +27,38 @@ const LocaleContext = createContext<LocaleContextType>({
 });
 
 export function LocaleProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-    const [locale, setLocaleState] = useState(() => {
+    const [currentLocale, setCurrentLocale] = useState(() => {
         const saved = localStorage.getItem("recall-locale");
         return saved && saved in locales ? saved : getSystemLocale();
     });
 
     const setLocale = useCallback((newLocale: string) => {
         if (newLocale in locales) {
-            setLocaleState(newLocale);
+            setCurrentLocale(newLocale);
             localStorage.setItem("recall-locale", newLocale);
         }
     }, []);
 
     useEffect(() => {
-        document.documentElement.lang = locale;
-    }, [locale]);
+        document.documentElement.lang = currentLocale;
+    }, [currentLocale]);
 
     const t = useCallback(
         (key: LocaleKey, vars?: Record<string, string | number>): string => {
-            let str = locales[locale]?.[key] || locales.en[key] || key;
+            let str = locales[currentLocale]?.[key] || locales.en[key] || key;
             if (vars) {
                 for (const [k, v] of Object.entries(vars)) {
-                    str = str.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), String(v));
+                    str = str.replaceAll(new RegExp(String.raw`\{\{${k}\}\}`), String(v));
                 }
             }
             return str;
         },
-        [locale]
+        [currentLocale]
     );
 
     const value = useMemo(
-        () => ({ locale, setLocale, t, availableLocales: Object.keys(locales) }),
-        [locale, setLocale, t]
+        () => ({ locale: currentLocale, setLocale, t, availableLocales: Object.keys(locales) }),
+        [currentLocale, setLocale, t]
     );
 
     return (
