@@ -47,6 +47,8 @@ struct SearchParams {
     path_prefix: Option<String>,
     #[schemars(description = "Max snippet size in bytes (default 1500, max 10000)")]
     context_bytes: Option<usize>,
+    #[schemars(description = "Minimum relevance score (0-100). Results below this are filtered out. Default: no filtering.")]
+    min_score: Option<f32>,
 }
 
 
@@ -141,7 +143,7 @@ impl RecallServer {
     )]
     async fn recall_search(
         &self,
-        Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes }): Parameters<SearchParams>,
+        Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes, min_score }): Parameters<SearchParams>,
     ) -> Result<CallToolResult, McpError> {
         let container =
             container.unwrap_or_else(|| self.state.config.active_container.clone());
@@ -169,81 +171,47 @@ impl RecallServer {
         let pp_ref = path_prefix.as_deref();
         let fe_ref = file_extensions.as_deref();
 
-        let query_variants = indexer::expand_query(&query);
-        let vector_fut =
-            indexer::search_files(&self.state.db, &table_name, &query_vector, search_limit, pp_ref, fe_ref, false);
-
-        let fts_db = self.state.db.clone();
-        let fts_table = table_name.clone();
-        let fe_clone = file_extensions.clone();
-        let pp_clone = path_prefix.clone();
-        let fts_fut = async move {
-            let pp_ref2 = pp_clone.as_deref();
-            let fe_ref2 = fe_clone.as_deref();
-            let futs: Vec<_> = query_variants
-                .iter()
-                .map(|v| indexer::search_fts(&fts_db, &fts_table, v, 30, pp_ref2, fe_ref2, false))
-                .collect();
-            let results = futures::future::join_all(futs).await;
-            let mut all: Vec<(String, String)> = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for result in results.into_iter().flatten() {
-                for item in result {
-                    if seen.insert(item.0.clone()) {
-                        all.push(item);
-                    }
-                }
-            }
-            all
-        };
-
-        let (vector_result, fts_results) = tokio::join!(vector_fut, fts_fut);
-        let vector_results = vector_result
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        let merged = if fts_results.is_empty() {
-            vector_results
-        } else {
-            indexer::hybrid_merge(&vector_results, &fts_results, search_limit)
-        };
+        let (merged, used_hybrid) = indexer::search_pipeline(
+            &self.state.db, &table_name, &query, &query_vector, search_limit, pp_ref, fe_ref,
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let rerank_input: Vec<(String, String, f32)> =
             merged.into_iter().take(top_k * 2).collect();
 
         let (final_results, used_reranker) = {
-            let mut guard = self.state.models.lock().await;
-            if let Some(reranker) = guard.reranker.take() {
-                let query_clone = query.clone();
-                let input_clone = rerank_input.clone();
-                match tokio::task::spawn_blocking(move || {
-                    let mut r = reranker;
-                    let res =
-                        indexer::rerank_results(&mut r, &query_clone, &input_clone);
-                    (r, res)
-                })
-                .await
+            let reranker = {
+                let mut guard = self.state.models.lock().await;
+                guard.reranker.take()
+            };
+            if let Some(reranker) = reranker {
+                let (reranker_back, results, used) =
+                    indexer::safe_rerank(reranker, query.clone(), rerank_input.clone()).await;
                 {
-                    Ok((reranker_back, rerank_res)) => {
-                        guard.reranker = Some(reranker_back);
-                        match rerank_res {
-                            Ok(reranked) => (reranked, true),
-                            Err(_) => (rerank_input, false),
-                        }
-                    }
-                    Err(_) => (rerank_input, false),
+                    let mut guard = self.state.models.lock().await;
+                    guard.reranker = reranker_back;
+                }
+                if used {
+                    (results, true)
+                } else {
+                    (rerank_input, false)
                 }
             } else {
                 (rerank_input, false)
             }
         };
 
-        let used_hybrid = !fts_results.is_empty();
-
         let mut scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, top_k);
+        scored.retain(|item| item.score >= min_score.unwrap_or(0.0));
 
         for item in &mut scored {
             if item.snippet.len() > context_bytes {
-                item.snippet = item.snippet[..context_bytes].to_string();
+                let mut end = context_bytes;
+                while end > 0 && !item.snippet.is_char_boundary(end) {
+                    end -= 1;
+                }
+                item.snippet = item.snippet[..end].to_string();
             }
         }
 
@@ -772,7 +740,7 @@ impl ServerHandler for RecallServer {
             },
             instructions: Some(
                 "Recall-Lite: local semantic file search for AI agents. \
-                 Use recall_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes). \
+                 Use recall_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes, min_score). \
                  Use recall_read_file to read file content by path (with optional line range). \
                  Use recall_list_files to browse indexed file paths. \
                  Use recall_index_status to check index health and stats. \

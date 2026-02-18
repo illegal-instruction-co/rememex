@@ -22,8 +22,8 @@ use ignore::WalkBuilder;
 
 pub use chunking::expand_query;
 pub use db::reset_index;
-pub use embedding::{embed_query, load_model, load_reranker, rerank_results};
-pub use search::{build_filter_expr, hybrid_merge, search_files, search_fts};
+pub use embedding::{embed_query, load_model, load_reranker, rerank_results, safe_rerank};
+pub use search::{build_filter_expr, hybrid_merge, search_files, search_fts, search_pipeline};
 
 const ANN_INDEX_THRESHOLD: usize = 256;
 const EMBED_BATCH_SIZE: usize = 256;
@@ -48,11 +48,16 @@ async fn embed_batch(
 
 async fn get_model_dim(model_state: &Arc<Mutex<ModelState>>) -> Result<usize> {
     let mut guard = model_state.lock().await;
+    if let Some(dim) = guard.cached_dim {
+        return Ok(dim);
+    }
     let model = guard
         .model
         .as_mut()
         .ok_or_else(|| anyhow!("Model not loaded"))?;
-    embedding::get_model_dimension(model)
+    let dim = embedding::get_model_dimension(model)?;
+    guard.cached_dim = Some(dim);
+    Ok(dim)
 }
 
 pub async fn index_directory<F>(
@@ -146,7 +151,7 @@ where
         })
         .collect();
 
-    let mut image_extracted: Vec<ExtractedFile> = Vec::new();
+    let mut image_futures = Vec::new();
     for path in &image_files {
         let path_str = path.to_string_lossy().to_string();
         let mtime = file_io::get_file_mtime(path);
@@ -157,27 +162,40 @@ where
             }
         }
 
-        if let Some(mut text) = file_io::read_file_content_with_ocr(path).await {
-            if !text.trim().is_empty() {
-                if indexing_config.use_git_history {
-                    if let Some(git_ctx) = git::get_commit_context(path) {
-                        text.push_str(&git_ctx);
+        let path_clone = path.clone();
+        let use_git = indexing_config.use_git_history;
+        let chunk_size = indexing_config.chunk_size;
+        let chunk_overlap = indexing_config.chunk_overlap;
+        image_futures.push(tokio::spawn(async move {
+            if let Some(mut text) = file_io::read_file_content_with_ocr(&path_clone).await {
+                if !text.trim().is_empty() {
+                    if use_git {
+                        if let Some(git_ctx) = git::get_commit_context(&path_clone) {
+                            text.push_str(&git_ctx);
+                        }
                     }
+                    let ext = path_clone
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
+                    return Some(ExtractedFile {
+                        path: path_clone.to_string_lossy().to_string(),
+                        chunks,
+                        mtime,
+                    });
                 }
-                let ext = path
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                let chunks = chunking::semantic_chunk(&text, &ext);
-                image_extracted.push(ExtractedFile {
-                    path: path_str,
-                    chunks,
-                    mtime,
-                });
             }
-        }
+            None
+        }));
     }
+
+    let image_results = futures::future::join_all(image_futures).await;
+    let image_extracted: Vec<ExtractedFile> = image_results
+        .into_iter()
+        .filter_map(|r| r.ok().flatten())
+        .collect();
 
     let mut all_extracted = extracted;
     all_extracted.extend(image_extracted);
@@ -290,6 +308,8 @@ pub async fn index_single_file(
     db: &Connection,
     model_state: &Arc<Mutex<ModelState>>,
     use_git_history: bool,
+    chunk_size: Option<usize>,
+    chunk_overlap: Option<usize>,
 ) -> Result<bool> {
     if !file_path.is_file() {
         return Ok(false);
@@ -300,8 +320,7 @@ pub async fn index_single_file(
     let path_str = file_path.to_string_lossy().to_string();
     let mtime = file_io::get_file_mtime(file_path);
 
-    let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
-    if let Some(&existing_mtime) = existing_mtimes.get(&path_str) {
+    if let Ok(Some(existing_mtime)) = db::get_single_file_mtime(&table, &path_str).await {
         if existing_mtime == mtime {
             return Ok(false);
         }
@@ -332,7 +351,7 @@ pub async fn index_single_file(
         }
     }
 
-    let chunks = chunking::semantic_chunk(&text, &ext);
+    let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
     if chunks.is_empty() {
         return Ok(false);
     }
@@ -366,11 +385,8 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
-    let table = match db.open_table(table_name).execute().await {
-        Ok(t) => t,
-        Err(_) => return Ok(()),
-    };
+    let table = db.open_table(table_name).execute().await?;
     let safe_path = file_path.replace('\'', "''");
-    let _ = table.delete(&format!("path = '{}'", safe_path)).await;
+    table.delete(&format!("path = '{}'", safe_path)).await?;
     Ok(())
 }

@@ -54,8 +54,10 @@ pub async fn restart(
             .map(|info| info.indexed_paths.clone())
             .unwrap_or_default();
         let use_git_history = config.indexing.use_git_history;
+        let chunk_size = config.indexing.chunk_size;
+        let chunk_overlap = config.indexing.chunk_overlap;
         drop(config);
-        start_watcher(paths, db, model_state, table_name, app, use_git_history)
+        start_watcher(paths, db, model_state, table_name, app, use_git_history, chunk_size, chunk_overlap)
     };
 
     let mut guard = watcher_state.lock().await;
@@ -69,6 +71,8 @@ fn start_watcher(
     table_name: String,
     app: AppHandle,
     use_git_history: bool,
+    chunk_size: Option<usize>,
+    chunk_overlap: Option<usize>,
 ) -> Option<WatcherHandle> {
     if paths.is_empty() {
         return None;
@@ -152,12 +156,16 @@ fn start_watcher(
 
                 for path in &deleted {
                     let path_str = path.to_string_lossy().to_string();
-                    let _ = indexer::delete_file_from_index(&path_str, &tn, &db).await;
+                    if let Err(e) = indexer::delete_file_from_index(&path_str, &tn, &db).await {
+                        let _ = app.emit("watcher-error", format!("Failed to remove {}: {}", path_str, e));
+                    }
                     count += 1;
                 }
 
                 for path in &changed {
-                    let _ = indexer::index_single_file(path, &tn, &db, &ms, use_git_history).await;
+                    if let Err(e) = indexer::index_single_file(path, &tn, &db, &ms, use_git_history, chunk_size, chunk_overlap).await {
+                        let _ = app.emit("watcher-error", format!("Failed to index {}: {}", path.display(), e));
+                    }
                     count += 1;
                     let _ = app.emit("indexing-progress", IndexingProgress {
                         current: count,
