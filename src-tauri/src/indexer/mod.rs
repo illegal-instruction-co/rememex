@@ -142,6 +142,8 @@ where
                 indexing_config.chunk_size,
                 indexing_config.chunk_overlap,
             );
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let chunks: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
 
             Some(ExtractedFile {
                 path: path_str,
@@ -180,6 +182,8 @@ where
                         .unwrap_or("")
                         .to_lowercase();
                     let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
+                    let file_name = path_clone.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let chunks: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
                     return Some(ExtractedFile {
                         path: path_clone.to_string_lossy().to_string(),
                         chunks,
@@ -358,11 +362,11 @@ pub async fn index_single_file(
     if chunks.is_empty() {
         return Ok(false);
     }
+    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let texts: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
+    let embeddings = embed_batch(provider_state, texts.clone()).await?;
 
-    let texts: Vec<String> = chunks.clone();
-    let embeddings = embed_batch(provider_state, texts).await?;
-
-    let records: Vec<db::Record> = chunks
+    let records: Vec<db::Record> = texts
         .into_iter()
         .zip(embeddings)
         .map(|(content, vector)| db::Record {

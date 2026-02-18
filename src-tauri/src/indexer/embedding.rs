@@ -55,18 +55,6 @@ pub fn get_model_dimension(model: &mut TextEmbedding) -> Result<usize> {
         .ok_or_else(|| anyhow!("No vector returned from dimension probe"))
 }
 
-const RERANK_MAX_SNIPPET_BYTES: usize = 300;
-
-fn truncate_to_byte_boundary(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
 
 pub fn rerank_results(
     reranker: &mut TextRerank,
@@ -77,13 +65,7 @@ pub fn rerank_results(
         return Ok(vec![]);
     }
 
-    let truncated: Vec<String> = results
-        .iter()
-        .map(|(_, snippet, _)| {
-            truncate_to_byte_boundary(snippet, RERANK_MAX_SNIPPET_BYTES).to_string()
-        })
-        .collect();
-    let doc_refs: Vec<&str> = truncated.iter().map(|s| s.as_str()).collect();
+    let doc_refs: Vec<&str> = results.iter().map(|(_, snippet, _)| snippet.as_str()).collect();
     let reranked = reranker
         .rerank(query, &doc_refs, false, None)
         .map_err(|e| anyhow!("Reranking failed: {}", e))?;
