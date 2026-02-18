@@ -10,6 +10,7 @@ import Sidebar from "./components/Sidebar";
 import SearchBar from "./components/SearchBar";
 import ResultsList from "./components/ResultsList";
 import StatusBar from "./components/StatusBar";
+import Settings from "./components/Settings";
 import type { SearchResult, IndexingProgress, ContainerItem } from "./types";
 import "./App.css";
 
@@ -28,6 +29,7 @@ function App() {
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [activeContainer, setActiveContainer] = useState("Default");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const modal = useModal();
   const { t } = useLocale();
 
@@ -290,6 +292,7 @@ function App() {
           onCreateContainer={handleCreateContainer}
           onDeleteContainer={handleDeleteContainer}
           onReindexAll={handleReindexAll}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <div className="main-content">
           <SearchBar
@@ -320,6 +323,7 @@ function App() {
         </div>
       </div>
       <ModalProvider />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   );
 }

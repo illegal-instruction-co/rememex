@@ -429,3 +429,83 @@ body {
   background: var(--color-control-fill-default);
   border-color: var(--color-control-stroke-default);
 }
+
+.sidebar-title-flex {
+  flex: 1;
+}
+
+.container-item-full {
+  width: 100%;
+  text-align: left;
+}
+
+.container-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.container-item-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.container-item-desc {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  opacity: 0.4;
+  margin-top: 2px;
+}
+
+.indexed-paths-icon {
+  opacity: 0.4;
+}
+
+.indexed-path-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.indexed-path-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reindex-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sidebar-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  font-size: 11px;
+  color: #fca5a5;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sidebar-delete-btn:hover {
+  color: #fecaca;
+  background: #381f1f;
+}

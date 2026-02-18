@@ -44,5 +44,13 @@
     "status_starting": "Indexleme başlıyor...",
     "status_done": "Tamamlandı — {{message}}",
     "status_rebuild_needed": "Index yeniden oluşturulmalı — Yeniden Oluştur'a tıklayın",
-    "status_model_error": "Model Hatası: {{error}}"
+    "status_model_error": "Model Hatası: {{error}}",
+    "settings_title": "Ayarlar",
+    "settings_always_on_top": "Her Zaman Üstte",
+    "settings_always_on_top_desc": "Pencereyi diğer pencerelerin üstünde tut",
+    "settings_launch_startup": "Başlangıçta Çalıştır",
+    "settings_launch_startup_desc": "Oturum açıldığında otomatik başlat",
+    "settings_hotkey": "Kısayol Tuşu",
+    "settings_hotkey_desc": "Pencereyi açıp kapatmak için genel kısayol",
+    "settings_restart_required": "Kısayol tuşu değişikliği yeniden başlatma gerektirir"
 }

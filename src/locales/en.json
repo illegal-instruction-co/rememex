@@ -44,5 +44,13 @@
     "status_starting": "Starting indexing...",
     "status_done": "Done — {{message}}",
     "status_rebuild_needed": "Index needs rebuild — click Rebuild Index",
-    "status_model_error": "Model Error: {{error}}"
+    "status_model_error": "Model Error: {{error}}",
+    "settings_title": "Settings",
+    "settings_always_on_top": "Always on Top",
+    "settings_always_on_top_desc": "Keep the window above other windows",
+    "settings_launch_startup": "Launch at Startup",
+    "settings_launch_startup_desc": "Start automatically when you log in",
+    "settings_hotkey": "Hotkey",
+    "settings_hotkey_desc": "Global shortcut to toggle window",
+    "settings_restart_required": "Restart required for hotkey changes"
 }

@@ -36,7 +36,7 @@ export default function StatusBar({
                     <span className="w-px h-3 bg-[--color-stroke-divider-default]"></span>
                     {status ? (
                         <span className="flex items-center gap-2 truncate">
-                            <Loader2 className="animate-spin" size={10} />
+                            {isIndexing && <Loader2 className="animate-spin" size={10} />}
                             {indexProgress && indexProgress.total > 0
                                 ? `${pct}% · ${status}`
                                 : status

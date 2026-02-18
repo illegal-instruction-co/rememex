@@ -2,6 +2,7 @@ import {
     Box, Plus, Trash2, FolderOpen, Folder, RefreshCw,
     PanelLeftClose, PanelLeftOpen, Globe,
 } from "lucide-react";
+import { SettingsButton } from "./Settings";
 import type { ContainerItem } from "../types";
 import { useLocale } from "../i18n";
 
@@ -20,13 +21,14 @@ interface SidebarProps {
     onCreateContainer: () => void;
     onDeleteContainer: () => void;
     onReindexAll: () => void;
+    onOpenSettings: () => void;
 }
 
 export default function Sidebar({
     containers, activeContainer, isIndexing, sidebarOpen,
     onToggleSidebar, onSwitchContainer, onCreateContainer,
-    onDeleteContainer, onReindexAll,
-}: SidebarProps) {
+    onDeleteContainer, onReindexAll, onOpenSettings,
+}: Readonly<SidebarProps>) {
     const { t, locale, setLocale, availableLocales } = useLocale();
 
     function cycleLocale() {
@@ -42,7 +44,8 @@ export default function Sidebar({
                 </button>
                 {sidebarOpen && (
                     <>
-                        <span className="sidebar-title flex-1">{t('sidebar_title')}</span>
+                        <span className="sidebar-title sidebar-title-flex">{t('sidebar_title')}</span>
+                        <SettingsButton onClick={onOpenSettings} />
                         <button className="sidebar-btn" onClick={onCreateContainer} title={t('sidebar_create')}>
                             <Plus size={14} />
                         </button>
@@ -56,21 +59,21 @@ export default function Sidebar({
                             <div key={c.name} className="container-item-wrapper">
                                 <button
                                     type="button"
-                                    className={`container-item w-full text-left ${activeContainer === c.name ? 'active' : ''}`}
+                                    className={`container-item container-item-full ${activeContainer === c.name ? 'active' : ''}`}
                                     onClick={() => onSwitchContainer(c.name)}
                                 >
                                     <Box size={14} className="icon" />
-                                    <div className="flex-1 min-w-0">
-                                        <span className="truncate block">{c.name}</span>
+                                    <div className="container-item-content">
+                                        <span className="container-item-name">{c.name}</span>
                                         {c.description && (
-                                            <span className="truncate block text-[10px] opacity-40 mt-0.5">{c.description}</span>
+                                            <span className="container-item-desc">{c.description}</span>
                                         )}
                                     </div>
                                 </button>
                                 {activeContainer === c.name && (
                                     <div className="indexed-paths-section">
                                         <div className="indexed-paths-header">
-                                            <Folder size={10} className="opacity-40" />
+                                            <Folder size={10} className="indexed-paths-icon" />
                                             <span>{t('sidebar_indexed_folders')}</span>
                                         </div>
                                         {c.indexed_paths.length > 0 ? (
@@ -78,8 +81,8 @@ export default function Sidebar({
                                                 <div className="indexed-paths">
                                                     {c.indexed_paths.map(p => (
                                                         <div key={p} className="indexed-path-item" title={p}>
-                                                            <FolderOpen size={10} className="shrink-0 opacity-50" />
-                                                            <span className="truncate">{p.split(/[\\/]/).slice(-2).join('/')}</span>
+                                                            <FolderOpen size={10} className="indexed-path-icon" />
+                                                            <span className="indexed-path-text">{p.split(/[\\/]/).slice(-2).join('/')}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -89,7 +92,7 @@ export default function Sidebar({
                                                     disabled={isIndexing}
                                                     title={t('sidebar_rebuild_tooltip')}
                                                 >
-                                                    <RefreshCw size={10} className={isIndexing ? 'animate-spin' : ''} />
+                                                    <RefreshCw size={10} className={isIndexing ? 'reindex-spin' : ''} />
                                                     <span>{t('sidebar_rebuild')}</span>
                                                 </button>
                                             </>
@@ -104,10 +107,7 @@ export default function Sidebar({
                         ))}
                     </div>
                     {activeContainer !== "Default" && (
-                        <button
-                            className="flex items-center justify-center gap-2 p-2 text-[11px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                            onClick={onDeleteContainer}
-                        >
+                        <button className="sidebar-delete-btn" onClick={onDeleteContainer}>
                             <Trash2 size={12} /> {t('sidebar_delete')}
                         </button>
                     )}

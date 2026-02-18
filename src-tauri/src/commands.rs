@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use tauri::Emitter;
+use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 use crate::config::{get_table_name, ConfigState};
@@ -332,4 +333,66 @@ pub async fn reindex_all(
     let _ = app.emit("indexing-complete", format!("{} files reindexed from {} folders", total, paths.len()));
 
     Ok(format!("Reindexed {} files from {} folders", total, paths.len()))
+}
+
+#[derive(Serialize)]
+pub struct AppConfig {
+    pub always_on_top: bool,
+    pub launch_at_startup: bool,
+    pub hotkey: String,
+}
+
+#[tauri::command]
+pub async fn get_config(
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<AppConfig, String> {
+    let config = config_state.config.lock().await;
+    Ok(AppConfig {
+        always_on_top: config.always_on_top,
+        launch_at_startup: config.launch_at_startup,
+        hotkey: config.hotkey.clone(),
+    })
+}
+
+#[derive(Deserialize)]
+pub struct ConfigUpdate {
+    pub always_on_top: Option<bool>,
+    pub launch_at_startup: Option<bool>,
+    pub hotkey: Option<String>,
+}
+
+#[tauri::command]
+pub async fn update_config(
+    app: tauri::AppHandle,
+    updates: ConfigUpdate,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    {
+        let mut config = config_state.config.lock().await;
+
+        if let Some(v) = updates.always_on_top {
+            config.always_on_top = v;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_always_on_top(v);
+            }
+        }
+
+        if let Some(v) = updates.launch_at_startup {
+            config.launch_at_startup = v;
+            use tauri_plugin_autostart::ManagerExt;
+            let autostart = app.autolaunch();
+            if v {
+                let _ = autostart.enable();
+            } else {
+                let _ = autostart.disable();
+            }
+        }
+
+        if let Some(ref v) = updates.hotkey {
+            config.hotkey = v.clone();
+        }
+    }
+
+    config_state.save().await?;
+    Ok(())
 }
