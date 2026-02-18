@@ -1,6 +1,5 @@
 use eframe::egui;
 
-use crate::i18n::{self, Language};
 use crate::state::SearchResult;
 
 use super::style;
@@ -11,14 +10,17 @@ pub enum ResultAction {
     Open(usize),
 }
 
+const RESULT_H: f32 = 76.0;
+const MAX_VISIBLE: usize = 6;
+
 fn get_file_icon(path: &str) -> &'static str {
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
-        "pdf" | "txt" | "md" => "\u{1F4C4}",         // document
-        "rs" | "ts" | "js" | "py" | "go" | "java" | "c" | "cpp" | "cs" => "\u{1F4BB}", // code
-        "json" | "yaml" | "yml" | "toml" => "\u{2699}", // config gear
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => "\u{1F5BC}", // image
-        _ => "\u{1F4C1}",                              // file
+        "pdf" | "txt" | "md" => "\u{1F4C4}",
+        "rs" | "ts" | "js" | "py" | "go" | "java" | "c" | "cpp" | "cs" => "\u{1F4BB}",
+        "json" | "yaml" | "yml" | "toml" => "\u{2699}",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => "\u{1F5BC}",
+        _ => "\u{1F4C1}",
     }
 }
 
@@ -30,83 +32,16 @@ pub fn show(
     ui: &mut egui::Ui,
     results: &[SearchResult],
     selected_index: usize,
-    active_container: &str,
-    query: &str,
-    locale: Language,
 ) -> ResultAction {
     let mut action = ResultAction::None;
 
-    // Empty states
     if results.is_empty() {
-        ui.vertical_centered(|ui| {
-            ui.add_space(ui.available_height() * 0.3);
-
-            if query.is_empty() {
-                // No query - show container info
-                ui.label(
-                    egui::RichText::new("\u{25A0}")
-                        .size(32.0)
-                        .color(style::ACCENT.linear_multiply(0.4)),
-                );
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(active_container)
-                        .size(16.0)
-                        .color(style::TEXT_PRIMARY)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new(i18n::ts(locale, "results_container_active"))
-                        .size(12.0)
-                        .color(style::TEXT_SECONDARY),
-                );
-                ui.add_space(24.0);
-                ui.label(
-                    egui::RichText::new(i18n::ts(locale, "results_shortcuts").to_uppercase())
-                        .size(10.0)
-                        .color(style::TEXT_TERTIARY),
-                );
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(ui.available_width() * 0.25);
-                    ui.label(
-                        egui::RichText::new(i18n::ts(locale, "results_shortcut_index"))
-                            .size(11.0)
-                            .color(style::TEXT_DISABLED)
-                            .monospace(),
-                    );
-                    ui.add_space(16.0);
-                    ui.label(
-                        egui::RichText::new(i18n::ts(locale, "results_shortcut_toggle"))
-                            .size(11.0)
-                            .color(style::TEXT_DISABLED)
-                            .monospace(),
-                    );
-                });
-            } else {
-                // Query but no results
-                ui.label(
-                    egui::RichText::new(i18n::ts(locale, "results_no_results"))
-                        .size(14.0)
-                        .color(style::TEXT_PRIMARY),
-                );
-                ui.label(
-                    egui::RichText::new(i18n::t(
-                        locale,
-                        "results_in_container",
-                        &[("container", active_container)],
-                    ))
-                    .size(12.0)
-                    .color(style::TEXT_SECONDARY),
-                );
-            }
-        });
         return action;
     }
 
-    // Results scroll area
     egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
+        .max_height(MAX_VISIBLE as f32 * RESULT_H)
+        .auto_shrink([false, true])
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
 
@@ -114,104 +49,95 @@ pub fn show(
                 let is_selected = idx == selected_index;
 
                 let bg = if is_selected {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 8)
+                    style::FILL_SELECTED
                 } else {
                     egui::Color32::TRANSPARENT
                 };
 
                 let frame = egui::Frame::new()
                     .fill(bg)
-                    .corner_radius(4.0)
-                    .inner_margin(egui::Margin { left: 12, right: 12, top: 8, bottom: 8 })
-                    .stroke(if is_selected {
-                        egui::Stroke::new(
-                            1.0,
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 13),
-                        )
-                    } else {
-                        egui::Stroke::NONE
-                    });
+                    .corner_radius(egui::CornerRadius::same(4u8))
+                    .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 });
 
-                let response = frame
-                    .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-
-                        // Accent pill for selected item
-                        if is_selected {
-                            let rect = ui.cursor();
-                            let pill_rect = egui::Rect::from_min_size(
-                                egui::pos2(rect.left() - 8.0, rect.top()),
-                                egui::vec2(3.0, 16.0),
-                            );
-                            ui.painter().rect_filled(pill_rect, 1.5, style::ACCENT);
-                        }
-
-                        ui.horizontal(|ui| {
-                            // File icon
-                            ui.label(
-                                egui::RichText::new(get_file_icon(&result.path))
-                                    .size(14.0)
-                                    .color(style::TEXT_SECONDARY),
-                            );
-
-                            ui.vertical(|ui| {
-                                // Filename + score
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(get_filename(&result.path))
-                                            .size(13.0)
-                                            .color(style::TEXT_PRIMARY)
-                                            .strong(),
-                                    );
-
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            let score_text =
-                                                format!("{}%", result.score.round() as i32);
-                                            let color = style::score_color(result.score);
-                                            ui.label(
-                                                egui::RichText::new(score_text)
-                                                    .size(10.0)
-                                                    .color(color),
-                                            );
-                                        },
-                                    );
-                                });
-
-                                // Snippet
-                                if !result.snippet.is_empty() {
-                                    let snippet_display: String =
-                                        result.snippet.chars().take(120).collect();
-                                    ui.label(
-                                        egui::RichText::new(snippet_display)
-                                            .size(11.0)
-                                            .color(style::TEXT_SECONDARY),
-                                    );
-                                }
-
-                                // Full path
+                let frame_resp = frame.show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(get_file_icon(&result.path))
+                                .size(14.0)
+                                .color(style::TEXT_SECONDARY),
+                        );
+                        ui.vertical(|ui| {
+                            // Nom du fichier + score
+                            ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(&result.path)
-                                        .size(10.0)
-                                        .color(style::TEXT_DISABLED)
-                                        .monospace(),
+                                    egui::RichText::new(get_filename(&result.path))
+                                        .size(13.0)
+                                        .color(style::TEXT_PRIMARY)
+                                        .strong(),
+                                );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        let score_text =
+                                            format!("{}%", result.score.round() as i32);
+                                        let color = style::score_color(result.score);
+                                        ui.label(
+                                            egui::RichText::new(score_text)
+                                                .size(10.0)
+                                                .color(color),
+                                        );
+                                    },
                                 );
                             });
-                        });
-                    })
-                    .response;
 
-                let response = response.interact(egui::Sense::click());
-                if response.clicked() {
-                    action = ResultAction::Open(idx);
-                } else if response.hovered() {
-                    if !is_selected {
-                        action = ResultAction::Select(idx);
-                    }
+                            // Snippet — 160 chars (etait 120)
+                            if !result.snippet.is_empty() {
+                                let snippet: String =
+                                    result.snippet.chars().take(160).collect();
+                                ui.label(
+                                    egui::RichText::new(snippet)
+                                        .size(11.0)
+                                        .color(style::TEXT_SECONDARY),
+                                );
+                            }
+
+                            // Chemin complet
+                            ui.label(
+                                egui::RichText::new(result.path.as_str())
+                                    .size(10.0)
+                                    .color(style::TEXT_DISABLED)
+                                    .monospace(),
+                            );
+                        });
+                    });
+                });
+
+                // Interaction sur le rect complet du frame
+                let response = frame_resp.response.interact(egui::Sense::click());
+
+                // Pill accent — dessine sur le bord gauche du rect frame (fix coordonnees)
+                // Utilise ui.painter() apres le frame pour rester dans le clip rect du panel
+                if is_selected {
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(
+                            response.rect.left_top(),
+                            egui::vec2(3.0, response.rect.height()),
+                        ),
+                        egui::CornerRadius::same(1u8),
+                        style::ACCENT,
+                    );
                 }
 
-                // Ensure selected item is visible
+                // Simple clic = selectionner ; double-clic = ouvrir
+                // Le hover ne selectionne plus automatiquement (etait source de confusion)
+                if response.double_clicked() {
+                    action = ResultAction::Open(idx);
+                } else if response.clicked() {
+                    action = ResultAction::Select(idx);
+                }
+
+                // Scroll pour maintenir l'element selectionne visible
                 if is_selected {
                     response.scroll_to_me(Some(egui::Align::Center));
                 }

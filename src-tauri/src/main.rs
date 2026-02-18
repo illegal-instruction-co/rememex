@@ -226,7 +226,7 @@ fn main() {
             .with_decorations(false)
             .with_always_on_top()
             .with_taskbar(false)
-            .with_inner_size([800.0, 600.0])
+            .with_inner_size([660.0, 88.0])
             .with_resizable(false)
             .with_visible(false),
         renderer: eframe::Renderer::Wgpu,

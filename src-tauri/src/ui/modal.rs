@@ -22,11 +22,6 @@ pub enum ModalState {
     },
 }
 
-impl ModalState {
-    pub fn take_action(&mut self) -> Option<String> {
-        None // Reserved for future keyboard-triggered modal actions
-    }
-}
 
 pub enum ModalResult {
     None,
@@ -220,8 +215,8 @@ fn show_confirm_modal(
     close: &mut bool,
     on_confirm: ModalResult,
 ) {
-    // Overlay
-    let overlay = egui::Area::new(egui::Id::new("modal_overlay_confirm"))
+    // Overlay — meme ID que CreateContainer pour eviter etat egui corrompu
+    let overlay = egui::Area::new(egui::Id::new("modal_overlay"))
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(0.0, 0.0));
 
@@ -316,7 +311,8 @@ fn show_confirm_modal(
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         *close = true;
     }
-    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+    // Confirme a l'appui d'Entree sauf si un TextEdit a le focus clavier
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) && !ctx.wants_keyboard_input() {
         *result = match &on_confirm {
             ModalResult::ConfirmDelete => ModalResult::ConfirmDelete,
             ModalResult::ConfirmClear => ModalResult::ConfirmClear,

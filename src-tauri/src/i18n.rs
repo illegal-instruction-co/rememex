@@ -118,6 +118,10 @@ fn en(key: &str) -> &'static str {
         "status_rebuild_needed" => "Index needs rebuild -- click Rebuild Index",
         "status_model_error" => "Model Error: {{error}}",
         "status_model_loading" => "Loading AI model...",
+        "settings_title" => "Settings",
+        "settings_add_folder" => "Add Folder (Ctrl+O)",
+        "settings_containers_section" => "Containers",
+        "settings_folders_section" => "Indexed Folders",
         _ => "???",
     }
 }
@@ -175,6 +179,10 @@ fn tr(key: &str) -> &'static str {
         "status_rebuild_needed" => "Index yeniden olusturulmali -- Yeniden Olustur'a tiklayin",
         "status_model_error" => "Model Hatasi: {{error}}",
         "status_model_loading" => "AI modeli yukleniyor...",
+        "settings_title" => "Ayarlar",
+        "settings_add_folder" => "Klasor Ekle (Ctrl+O)",
+        "settings_containers_section" => "Konteynerler",
+        "settings_folders_section" => "Indexlenen Klasorler",
         _ => "",
     }
 }
