@@ -52,7 +52,7 @@ pub struct Config {
 }
 
 fn default_schema() -> String {
-    "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json"
+    "https://raw.githubusercontent.com/FeelTheFonk/recall-lite/main/config.schema.json"
         .to_string()
 }
 
