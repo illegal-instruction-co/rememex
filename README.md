@@ -45,7 +45,7 @@ same 5 tasks, same codebase. grep vs recall-lite MCP:
 
 agents using recall-lite are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 — that's both speed and cost.
 
-![McpSearch](https://github.com/user-attachments/assets/35ce8fb8-b24f-4a45-86fb-80e0eae9baa3)
+<img src="https://github.com/user-attachments/assets/35ce8fb8-b24f-4a45-86fb-80e0eae9baa3" width="400" />
 
 ## stack
 rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base, JINA Reranker v2, rayon
