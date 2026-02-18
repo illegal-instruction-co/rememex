@@ -340,6 +340,12 @@ pub struct AppConfig {
     pub always_on_top: bool,
     pub launch_at_startup: bool,
     pub hotkey: String,
+    pub use_git_history: bool,
+    pub embedding_model: String,
+    pub chunk_size: Option<usize>,
+    pub chunk_overlap: Option<usize>,
+    pub extra_extensions: Vec<String>,
+    pub excluded_extensions: Vec<String>,
 }
 
 #[tauri::command]
@@ -351,6 +357,12 @@ pub async fn get_config(
         always_on_top: config.always_on_top,
         launch_at_startup: config.launch_at_startup,
         hotkey: config.hotkey.clone(),
+        use_git_history: config.indexing.use_git_history,
+        embedding_model: config.embedding_model.clone(),
+        chunk_size: config.indexing.chunk_size,
+        chunk_overlap: config.indexing.chunk_overlap,
+        extra_extensions: config.indexing.extra_extensions.clone(),
+        excluded_extensions: config.indexing.excluded_extensions.clone(),
     })
 }
 
@@ -359,6 +371,12 @@ pub struct ConfigUpdate {
     pub always_on_top: Option<bool>,
     pub launch_at_startup: Option<bool>,
     pub hotkey: Option<String>,
+    pub use_git_history: Option<bool>,
+    pub embedding_model: Option<String>,
+    pub chunk_size: Option<Option<usize>>,
+    pub chunk_overlap: Option<Option<usize>>,
+    pub extra_extensions: Option<Vec<String>>,
+    pub excluded_extensions: Option<Vec<String>>,
 }
 
 #[tauri::command]
@@ -390,6 +408,30 @@ pub async fn update_config(
 
         if let Some(ref v) = updates.hotkey {
             config.hotkey = v.clone();
+        }
+
+        if let Some(v) = updates.use_git_history {
+            config.indexing.use_git_history = v;
+        }
+
+        if let Some(ref v) = updates.embedding_model {
+            config.embedding_model = v.clone();
+        }
+
+        if let Some(v) = updates.chunk_size {
+            config.indexing.chunk_size = v;
+        }
+
+        if let Some(v) = updates.chunk_overlap {
+            config.indexing.chunk_overlap = v;
+        }
+
+        if let Some(ref v) = updates.extra_extensions {
+            config.indexing.extra_extensions = v.clone();
+        }
+
+        if let Some(ref v) = updates.excluded_extensions {
+            config.indexing.excluded_extensions = v.clone();
         }
     }
 

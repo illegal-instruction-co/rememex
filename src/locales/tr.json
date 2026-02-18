@@ -52,5 +52,20 @@
     "settings_launch_startup_desc": "Oturum açıldığında otomatik başlat",
     "settings_hotkey": "Kısayol Tuşu",
     "settings_hotkey_desc": "Pencereyi açıp kapatmak için genel kısayol",
-    "settings_restart_required": "Kısayol tuşu değişikliği yeniden başlatma gerektirir"
+    "settings_git_history": "Git Geçmişi",
+    "settings_git_history_desc": "Arama indexini commit mesajlarıyla zenginleştir",
+    "settings_restart_required": "Kısayol tuşu değişikliği yeniden başlatma gerektirir",
+    "settings_language": "Dil",
+    "settings_language_desc": "Arayüz dili",
+    "settings_section_indexing": "Indexleme",
+    "settings_embedding_model": "Embedding Modeli",
+    "settings_embedding_model_desc": "Anlamsal arama için AI modeli",
+    "settings_chunk_size": "Parça Boyutu",
+    "settings_chunk_overlap": "Örtüşme",
+    "settings_chunk_desc": "Indexleme için metin bölme (token)",
+    "settings_extra_ext": "Ek Uzantılar",
+    "settings_extra_ext_desc": "Indexlenecek ek dosya türleri",
+    "settings_excluded_ext": "Hariç Tutulan Uzantılar",
+    "settings_excluded_ext_desc": "Indexleme sırasında atlanacak dosya türleri",
+    "settings_restart_reindex": "Yeniden başlatma ve indexleme gerekli"
 }

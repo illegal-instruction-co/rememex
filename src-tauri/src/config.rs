@@ -13,6 +13,8 @@ pub struct IndexingConfig {
     pub excluded_extensions: Vec<String>,
     pub chunk_size: Option<usize>,
     pub chunk_overlap: Option<usize>,
+    #[serde(default = "default_true")]
+    pub use_git_history: bool,
 }
 
 impl Default for IndexingConfig {
@@ -22,6 +24,7 @@ impl Default for IndexingConfig {
             excluded_extensions: Vec::new(),
             chunk_size: None,
             chunk_overlap: None,
+            use_git_history: true,
         }
     }
 }

@@ -53,8 +53,9 @@ pub async fn restart(
             .get(&config.active_container)
             .map(|info| info.indexed_paths.clone())
             .unwrap_or_default();
+        let use_git_history = config.indexing.use_git_history;
         drop(config);
-        start_watcher(paths, db, model_state, table_name, app)
+        start_watcher(paths, db, model_state, table_name, app, use_git_history)
     };
 
     let mut guard = watcher_state.lock().await;
@@ -67,6 +68,7 @@ fn start_watcher(
     model_state: Arc<Mutex<ModelState>>,
     table_name: String,
     app: AppHandle,
+    use_git_history: bool,
 ) -> Option<WatcherHandle> {
     if paths.is_empty() {
         return None;
@@ -155,7 +157,7 @@ fn start_watcher(
                 }
 
                 for path in &changed {
-                    let _ = indexer::index_single_file(path, &tn, &db, &ms).await;
+                    let _ = indexer::index_single_file(path, &tn, &db, &ms, use_git_history).await;
                     count += 1;
                     let _ = app.emit("indexing-progress", IndexingProgress {
                         current: count,

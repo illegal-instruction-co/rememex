@@ -120,8 +120,10 @@ where
             if text.trim().is_empty() {
                 return None;
             }
-            if let Some(git_ctx) = git::get_commit_context(path) {
-                text.push_str(&git_ctx);
+            if indexing_config.use_git_history {
+                if let Some(git_ctx) = git::get_commit_context(path) {
+                    text.push_str(&git_ctx);
+                }
             }
 
             let ext = path
@@ -157,8 +159,10 @@ where
 
         if let Some(mut text) = file_io::read_file_content_with_ocr(path).await {
             if !text.trim().is_empty() {
-                if let Some(git_ctx) = git::get_commit_context(path) {
-                    text.push_str(&git_ctx);
+                if indexing_config.use_git_history {
+                    if let Some(git_ctx) = git::get_commit_context(path) {
+                        text.push_str(&git_ctx);
+                    }
                 }
                 let ext = path
                     .extension()
@@ -285,6 +289,7 @@ pub async fn index_single_file(
     table_name: &str,
     db: &Connection,
     model_state: &Arc<Mutex<ModelState>>,
+    use_git_history: bool,
 ) -> Result<bool> {
     if !file_path.is_file() {
         return Ok(false);
@@ -321,8 +326,10 @@ pub async fn index_single_file(
         Some(t) if !t.trim().is_empty() => t,
         _ => return Ok(false),
     };
-    if let Some(git_ctx) = git::get_commit_context(file_path) {
-        text.push_str(&git_ctx);
+    if use_git_history {
+        if let Some(git_ctx) = git::get_commit_context(file_path) {
+            text.push_str(&git_ctx);
+        }
     }
 
     let chunks = chunking::semantic_chunk(&text, &ext);

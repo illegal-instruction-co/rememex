@@ -52,5 +52,20 @@
     "settings_launch_startup_desc": "Start automatically when you log in",
     "settings_hotkey": "Hotkey",
     "settings_hotkey_desc": "Global shortcut to toggle window",
-    "settings_restart_required": "Restart required for hotkey changes"
+    "settings_git_history": "Git History",
+    "settings_git_history_desc": "Enrich search index with commit messages",
+    "settings_restart_required": "Restart required for hotkey changes",
+    "settings_language": "Language",
+    "settings_language_desc": "Interface language",
+    "settings_section_indexing": "Indexing",
+    "settings_embedding_model": "Embedding Model",
+    "settings_embedding_model_desc": "AI model for semantic search",
+    "settings_chunk_size": "Chunk Size",
+    "settings_chunk_overlap": "Overlap",
+    "settings_chunk_desc": "Text splitting for indexing (tokens)",
+    "settings_extra_ext": "Extra Extensions",
+    "settings_extra_ext_desc": "Additional file types to index",
+    "settings_excluded_ext": "Excluded Extensions",
+    "settings_excluded_ext_desc": "File types to skip during indexing",
+    "settings_restart_reindex": "Restart & reindex required"
 }

@@ -11,8 +11,13 @@
 }
 
 @keyframes settings-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .settings-panel {
@@ -30,8 +35,15 @@
 }
 
 @keyframes settings-slide-in {
-    from { transform: scale(0.94) translateY(6px); opacity: 0; }
-    to { transform: scale(1) translateY(0); opacity: 1; }
+    from {
+        transform: scale(0.94) translateY(6px);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
 }
 
 .settings-header {
@@ -172,12 +184,12 @@
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.toggle input:checked + .toggle-slider {
+.toggle input:checked+.toggle-slider {
     background: var(--color-fill-accent-default);
     border-color: var(--color-fill-accent-default);
 }
 
-.toggle input:checked + .toggle-slider::before {
+.toggle input:checked+.toggle-slider::before {
     transform: translateY(-50%) translateX(19px);
     background: #000;
 }
@@ -186,7 +198,7 @@
     border-color: rgba(255, 255, 255, 0.35);
 }
 
-.toggle input:checked + .toggle-slider:hover {
+.toggle input:checked+.toggle-slider:hover {
     background: var(--color-fill-accent-secondary);
     border-color: var(--color-fill-accent-secondary);
 }
@@ -236,4 +248,108 @@
 
 .hotkey-save:hover {
     background: var(--color-fill-accent-secondary);
+}
+
+.settings-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 14px 14px 4px 14px;
+}
+
+.settings-section-title:first-child {
+    padding-top: 6px;
+}
+
+.settings-select {
+    padding: 5px 24px 5px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+
+.settings-select:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.settings-select:focus {
+    border-color: var(--color-fill-accent-default);
+    box-shadow: 0 0 0 1px rgba(96, 205, 255, 0.2);
+}
+
+.settings-select option {
+    background: #282828;
+    color: var(--color-text-primary);
+}
+
+.settings-number-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-number-label {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+}
+
+.settings-number-input {
+    width: 64px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    text-align: center;
+    outline: none;
+    transition: all 0.15s;
+}
+
+.settings-number-input:focus {
+    border-color: var(--color-fill-accent-default);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 1px rgba(96, 205, 255, 0.2);
+}
+
+.settings-number-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.settings-ext-input {
+    width: 140px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.15s;
+}
+
+.settings-ext-input:focus {
+    border-color: var(--color-fill-accent-default);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 1px rgba(96, 205, 255, 0.2);
+}
+
+.settings-ext-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 11px;
 }
