@@ -2,7 +2,29 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tokio::sync::Mutex;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IndexingConfig {
+    #[serde(default)]
+    pub extra_extensions: Vec<String>,
+    #[serde(default)]
+    pub excluded_extensions: Vec<String>,
+    pub chunk_size: Option<usize>,
+    pub chunk_overlap: Option<usize>,
+}
+
+impl Default for IndexingConfig {
+    fn default() -> Self {
+        Self {
+            extra_extensions: Vec::new(),
+            excluded_extensions: Vec::new(),
+            chunk_size: None,
+            chunk_overlap: None,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ContainerInfo {
@@ -12,9 +34,31 @@ pub struct ContainerInfo {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
+    #[serde(rename = "$schema", default = "default_schema")]
+    pub schema: String,
     pub embedding_model: String,
+    #[serde(default)]
+    pub indexing: IndexingConfig,
+    #[serde(default = "default_hotkey")]
+    pub hotkey: String,
+    #[serde(default = "default_true")]
+    pub always_on_top: bool,
+    #[serde(default)]
+    pub launch_at_startup: bool,
     pub containers: HashMap<String, ContainerInfo>,
     pub active_container: String,
+}
+
+fn default_schema() -> String {
+    "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json".to_string()
+}
+
+fn default_hotkey() -> String {
+    "Alt+Space".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -25,11 +69,116 @@ impl Default for Config {
             indexed_paths: Vec::new(),
         });
         Self {
+            schema: default_schema(),
             embedding_model: "MultilingualE5Base".to_string(),
+            indexing: IndexingConfig::default(),
+            hotkey: default_hotkey(),
+            always_on_top: true,
+            launch_at_startup: false,
             containers,
             active_container: "Default".to_string(),
         }
     }
+}
+
+pub fn parse_hotkey(s: &str) -> Shortcut {
+    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+    let mut mods = Modifiers::empty();
+    let mut key_str = "";
+
+    for part in &parts {
+        match part.to_lowercase().as_str() {
+            "alt" => mods |= Modifiers::ALT,
+            "ctrl" | "control" => mods |= Modifiers::CONTROL,
+            "shift" => mods |= Modifiers::SHIFT,
+            "super" | "meta" | "win" | "cmd" => mods |= Modifiers::SUPER,
+            _ => key_str = part,
+        }
+    }
+
+    let code = match key_str.to_lowercase().as_str() {
+        "space" => Code::Space,
+        "enter" | "return" => Code::Enter,
+        "tab" => Code::Tab,
+        "escape" | "esc" => Code::Escape,
+        "backspace" => Code::Backspace,
+        "delete" | "del" => Code::Delete,
+        "up" => Code::ArrowUp,
+        "down" => Code::ArrowDown,
+        "left" => Code::ArrowLeft,
+        "right" => Code::ArrowRight,
+        "home" => Code::Home,
+        "end" => Code::End,
+        "pageup" => Code::PageUp,
+        "pagedown" => Code::PageDown,
+        "insert" => Code::Insert,
+        "f1" => Code::F1,
+        "f2" => Code::F2,
+        "f3" => Code::F3,
+        "f4" => Code::F4,
+        "f5" => Code::F5,
+        "f6" => Code::F6,
+        "f7" => Code::F7,
+        "f8" => Code::F8,
+        "f9" => Code::F9,
+        "f10" => Code::F10,
+        "f11" => Code::F11,
+        "f12" => Code::F12,
+        "a" => Code::KeyA,
+        "b" => Code::KeyB,
+        "c" => Code::KeyC,
+        "d" => Code::KeyD,
+        "e" => Code::KeyE,
+        "f" => Code::KeyF,
+        "g" => Code::KeyG,
+        "h" => Code::KeyH,
+        "i" => Code::KeyI,
+        "j" => Code::KeyJ,
+        "k" => Code::KeyK,
+        "l" => Code::KeyL,
+        "m" => Code::KeyM,
+        "n" => Code::KeyN,
+        "o" => Code::KeyO,
+        "p" => Code::KeyP,
+        "q" => Code::KeyQ,
+        "r" => Code::KeyR,
+        "s" => Code::KeyS,
+        "t" => Code::KeyT,
+        "u" => Code::KeyU,
+        "v" => Code::KeyV,
+        "w" => Code::KeyW,
+        "x" => Code::KeyX,
+        "y" => Code::KeyY,
+        "z" => Code::KeyZ,
+        "0" => Code::Digit0,
+        "1" => Code::Digit1,
+        "2" => Code::Digit2,
+        "3" => Code::Digit3,
+        "4" => Code::Digit4,
+        "5" => Code::Digit5,
+        "6" => Code::Digit6,
+        "7" => Code::Digit7,
+        "8" => Code::Digit8,
+        "9" => Code::Digit9,
+        "-" | "minus" => Code::Minus,
+        "=" | "equal" => Code::Equal,
+        "[" => Code::BracketLeft,
+        "]" => Code::BracketRight,
+        "\\" | "backslash" => Code::Backslash,
+        ";" | "semicolon" => Code::Semicolon,
+        "'" | "quote" => Code::Quote,
+        "," | "comma" => Code::Comma,
+        "." | "period" => Code::Period,
+        "/" | "slash" => Code::Slash,
+        "`" | "backquote" => Code::Backquote,
+        _ => {
+            eprintln!("[config] unrecognized hotkey key: '{}', falling back to Space", key_str);
+            Code::Space
+        }
+    };
+
+    let mods_opt = if mods.is_empty() { None } else { Some(mods) };
+    Shortcut::new(mods_opt, code)
 }
 
 pub struct ConfigState {
@@ -67,7 +216,11 @@ pub fn get_embedding_model(name: &str) -> fastembed::EmbeddingModel {
 
 pub fn load_config(config_path: &std::path::Path) -> Config {
     if !config_path.exists() {
-        return Config::default();
+        let default = Config::default();
+        if let Ok(json) = serde_json::to_string_pretty(&default) {
+            let _ = std::fs::write(config_path, json);
+        }
+        return default;
     }
     let content = std::fs::read_to_string(config_path).unwrap_or_default();
     match serde_json::from_str::<Config>(&content) {
@@ -97,7 +250,12 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                 }
                 let default_active = containers.keys().next().cloned().unwrap_or_else(|| "Default".to_string());
                 Config {
+                    schema: default_schema(),
                     embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
+                    indexing: IndexingConfig::default(),
+                    hotkey: default_hotkey(),
+                    always_on_top: true,
+                    launch_at_startup: false,
                     active_container: old.active_container.unwrap_or(default_active),
                     containers,
                 }

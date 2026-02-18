@@ -13,6 +13,7 @@ use lancedb::connection::Connection;
 use rayon::prelude::*;
 use tokio::sync::Mutex;
 
+use crate::config::IndexingConfig;
 use crate::state::ModelState;
 
 use ignore::WalkBuilder;
@@ -57,6 +58,7 @@ pub async fn index_directory<F>(
     table_name: &str,
     db: &Connection,
     model_state: &Arc<Mutex<ModelState>>,
+    indexing_config: &IndexingConfig,
     progress_callback: F,
 ) -> Result<usize>
 where
@@ -72,6 +74,7 @@ where
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
+        .add_custom_ignore_filename(".rcignore")
         .build()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
@@ -111,7 +114,7 @@ where
                 }
             }
 
-            let text = file_io::read_file_content(path)?;
+            let text = file_io::read_file_content_with_config(path, indexing_config)?;
             if text.trim().is_empty() {
                 return None;
             }
@@ -121,7 +124,12 @@ where
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            let chunks = chunking::semantic_chunk(&text, &ext);
+            let chunks = chunking::semantic_chunk_with_overrides(
+                &text,
+                &ext,
+                indexing_config.chunk_size,
+                indexing_config.chunk_overlap,
+            );
 
             Some(ExtractedFile {
                 path: path_str,

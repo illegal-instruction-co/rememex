@@ -20,6 +20,10 @@ fn build_gitignore(roots: &[String]) -> Option<ignore::gitignore::Gitignore> {
         if gi.exists() {
             let _ = builder.add(gi);
         }
+        let rc = std::path::Path::new(root).join(".rcignore");
+        if rc.exists() {
+            let _ = builder.add(rc);
+        }
     }
     builder.build().ok()
 }

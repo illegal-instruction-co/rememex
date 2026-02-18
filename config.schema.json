@@ -1,0 +1,125 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Recall-Lite Config",
+    "description": "Configuration for Recall-Lite local semantic search",
+    "type": "object",
+    "properties": {
+        "embedding_model": {
+            "type": "string",
+            "enum": [
+                "AllMiniLML6V2",
+                "MultilingualE5Small",
+                "MultilingualE5Base"
+            ],
+            "default": "MultilingualE5Base",
+            "description": "Embedding model to use. Changing this requires a full reindex."
+        },
+        "hotkey": {
+            "type": "string",
+            "default": "Alt+Space",
+            "description": "Global hotkey to toggle window. Format: Modifier+Key (e.g. Ctrl+Shift+K, Alt+F1, Super+Space)",
+            "examples": [
+                "Alt+Space",
+                "Ctrl+Shift+K",
+                "Alt+F1",
+                "Super+Space",
+                "Ctrl+Alt+R"
+            ],
+            "pattern": "^(Alt|Ctrl|Control|Shift|Super|Meta|Win|Cmd)(\\+(Alt|Ctrl|Control|Shift|Super|Meta|Win|Cmd))*\\+[A-Za-z0-9]+$"
+        },
+        "always_on_top": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether the window stays above other windows"
+        },
+        "launch_at_startup": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically start Recall-Lite when you log in. Adds to system startup programs"
+        },
+        "indexing": {
+            "type": "object",
+            "description": "Indexing behavior overrides",
+            "properties": {
+                "extra_extensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Additional file extensions to index (without dot)",
+                    "examples": [
+                        [
+                            "xyz",
+                            "custom",
+                            "mdx"
+                        ]
+                    ]
+                },
+                "excluded_extensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "File extensions to exclude from indexing (overrides built-in list)",
+                    "examples": [
+                        [
+                            "lock",
+                            "map",
+                            "min.js"
+                        ]
+                    ]
+                },
+                "chunk_size": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 10000,
+                    "description": "Max bytes per chunk. Overrides per-filetype defaults (code=1200, docs=800, config=600). Don't exceed ~2000, embedding model truncates at ~512 tokens"
+                },
+                "chunk_overlap": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "Bytes of overlap between chunks. Default is 100-200 depending on filetype"
+                }
+            },
+            "additionalProperties": false
+        },
+        "containers": {
+            "type": "object",
+            "description": "Search containers. Each container is an isolated index",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable description of the container"
+                    },
+                    "indexed_paths": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Absolute paths to indexed folders"
+                    }
+                },
+                "required": [
+                    "description",
+                    "indexed_paths"
+                ]
+            }
+        },
+        "active_container": {
+            "type": "string",
+            "default": "Default",
+            "description": "Name of the currently active container"
+        }
+    },
+    "required": [
+        "embedding_model",
+        "containers",
+        "active_container"
+    ],
+    "additionalProperties": false
+}

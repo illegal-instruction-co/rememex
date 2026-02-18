@@ -85,7 +85,7 @@ on launch it:
 3. reads your config (`%AppData%\com.recall-lite.app\config.json`)
 4. sits on stdin waiting for queries
 
-first launch is slow (~3-5 sec) because it loads ~280MB of model weights. after that it's instant.
+first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weights + ~1GB reranker. after that it's instant.
 
 ## stuff that might confuse you
 

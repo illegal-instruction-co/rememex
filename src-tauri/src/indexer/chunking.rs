@@ -7,8 +7,13 @@ pub struct ChunkConfig {
 
 pub fn get_chunk_config(ext: &str) -> ChunkConfig {
     match ext {
-        "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp"
-        | "cs" | "rb" => ChunkConfig {
+        "rs" | "py" | "pyi" | "pyw" | "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "tsx"
+        | "jsx" | "go" | "java" | "kt" | "kts" | "scala" | "sc" | "groovy" | "gradle" | "clj"
+        | "cljs" | "cljc" | "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" | "hxx" | "hh" | "cs"
+        | "fs" | "fsi" | "fsx" | "vb" | "vbs" | "rb" | "erb" | "swift" | "m" | "mm" | "dart"
+        | "php" | "pl" | "pm" | "lua" | "r" | "jl" | "ex" | "exs" | "erl" | "hrl" | "hs"
+        | "lhs" | "ml" | "mli" | "elm" | "zig" | "nim" | "v" | "d" | "sol" | "move" | "pas"
+        | "lisp" | "el" | "rkt" | "asm" | "s" | "wat" | "vue" | "svelte" | "astro" => ChunkConfig {
             max_bytes: 1200,
             overlap_bytes: 200,
         },
@@ -16,11 +21,14 @@ pub fn get_chunk_config(ext: &str) -> ChunkConfig {
             max_bytes: 800,
             overlap_bytes: 150,
         },
-        "toml" | "yaml" | "yml" | "json" | "ini" | "cfg" | "conf" | "env" => ChunkConfig {
-            max_bytes: 600,
-            overlap_bytes: 100,
-        },
-        "csv" | "tsv" | "sql" | "log" => ChunkConfig {
+        "toml" | "yaml" | "yml" | "json" | "jsonc" | "json5" | "ini" | "cfg" | "conf" | "env"
+        | "properties" | "tf" | "tfvars" | "hcl" | "nix" | "proto" | "graphql" | "gql" => {
+            ChunkConfig {
+                max_bytes: 600,
+                overlap_bytes: 100,
+            }
+        }
+        "csv" | "tsv" | "sql" | "log" | "lock" | "cmake" => ChunkConfig {
             max_bytes: 800,
             overlap_bytes: 150,
         },
@@ -34,27 +42,88 @@ pub fn get_chunk_config(ext: &str) -> ChunkConfig {
 fn get_semantic_pattern(ext: &str) -> Option<Regex> {
     let pattern = match ext {
         "rs" => r"\n(?:pub\s+)?(?:async\s+)?(?:fn |struct |enum |impl |trait |mod )",
-        "py" => r"\n(?:class |def |async def )",
-        "js" | "jsx" => {
+        "py" | "pyi" | "pyw" => r"\n(?:class |def |async def )",
+        "js" | "jsx" | "mjs" | "cjs" => {
             r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))"
         }
-        "ts" | "tsx" => {
+        "ts" | "tsx" | "mts" | "cts" => {
             r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))"
         }
         "go" => r"\n(?:func |type )",
         "java" | "cs" => {
             r"\n\s*(?:public |private |protected )?(?:static )?(?:class |interface |void |int |string |def )"
         }
-        "c" | "cpp" | "h" | "hpp" => r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)",
-        "rb" => r"\n(?:class |module |def )",
+        "kt" | "kts" => {
+            r"\n(?:(?:override |suspend |private |internal |public )?(?:fun |class |object |interface |data class |sealed class |enum class ))"
+        }
+        "scala" | "sc" => {
+            r"\n\s*(?:(?:private |protected )?(?:def |class |object |trait |case class |val |var ))"
+        }
+        "swift" => {
+            r"\n\s*(?:(?:public |private |internal |open )?(?:func |class |struct |enum |protocol |extension ))"
+        }
+        "dart" => r"\n\s*(?:(?:abstract )?class |void |Future |Stream |[A-Z][a-zA-Z]*\s+[a-z])",
+        "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" | "hxx" | "hh" | "m" | "mm" => {
+            r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"
+        }
+        "rb" | "erb" => r"\n(?:class |module |def )",
+        "php" => {
+            r"\n\s*(?:(?:public |private |protected |static )?function |class |interface |trait )"
+        }
+        "lua" => r"\n(?:(?:local )?function )",
+        "jl" => r"\n(?:function |macro |struct |module |abstract type )",
+        "ex" | "exs" => r"\n\s*(?:def |defp |defmodule |defmacro )",
+        "erl" | "hrl" => r"\n[a-z][a-zA-Z0-9_]*\(",
+        "hs" | "lhs" => r"\n[a-z][a-zA-Z0-9_']*\s+::",
+        "ml" | "mli" => r"\n(?:let |type |module |val )",
+        "elm" => r"\n[a-z][a-zA-Z0-9_]*\s+:",
+        "fs" | "fsi" | "fsx" => r"\n(?:let |type |module |member )",
+        "zig" => r"\n(?:(?:pub )?(?:fn |const |var ))",
+        "nim" => r"\n(?:proc |func |method |type |template |macro )",
+        "v" => r"\n(?:(?:pub )?(?:fn |struct |enum |interface ))",
+        "d" => r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)",
+        "sol" => r"\n\s*(?:function |contract |interface |library |event |modifier )",
+        "clj" | "cljs" | "cljc" | "lisp" | "el" | "rkt" => r"\n\(",
+        "pl" | "pm" => r"\n(?:sub |package )",
+        "r" => r"\n[a-zA-Z_.][a-zA-Z0-9_.]*\s*<-\s*function",
+        "groovy" | "gradle" => r"\n\s*(?:def |class |interface )",
+        "vue" | "svelte" | "astro" => r"\n<(?:template|script|style)",
+        "pas" => r"\n(?:procedure |function |type |var |begin )",
+        "vb" | "vbs" => r"\n\s*(?:Sub |Function |Class |Property |Module )",
         "md" | "markdown" => r"\n#{1,6} ",
         "rst" | "adoc" => r"\n\n",
         "txt" | "tex" | "bib" => r"\n\n",
         "toml" | "ini" | "cfg" => r"\n\[",
         "yaml" | "yml" => r"\n[a-zA-Z_][a-zA-Z0-9_]*:",
+        "tf" | "tfvars" | "hcl" => r"\n(?:resource |data |variable |output |module |locals )",
+        "nix" => r"\n\s*[a-zA-Z_][a-zA-Z0-9_-]*\s*=",
+        "proto" => r"\n(?:message |service |enum |rpc )",
+        "graphql" | "gql" => r"\n(?:type |query |mutation |subscription |input |interface |enum )",
         _ => return None,
     };
     Regex::new(pattern).ok()
+}
+
+pub fn semantic_chunk_with_overrides(
+    text: &str,
+    ext: &str,
+    chunk_size: Option<usize>,
+    chunk_overlap: Option<usize>,
+) -> Vec<String> {
+    let mut config = get_chunk_config(ext);
+    if let Some(size) = chunk_size {
+        config.max_bytes = size.max(100);
+    }
+    if let Some(overlap) = chunk_overlap {
+        config.overlap_bytes = overlap;
+    }
+
+    let pattern = match get_semantic_pattern(ext) {
+        Some(p) => p,
+        None => return chunk_with_overlap(text, config.max_bytes, config.overlap_bytes),
+    };
+
+    chunk_with_semantic_config(text, &config, &pattern)
 }
 
 pub fn semantic_chunk(text: &str, ext: &str) -> Vec<String> {
@@ -65,6 +134,10 @@ pub fn semantic_chunk(text: &str, ext: &str) -> Vec<String> {
         None => return chunk_with_overlap(text, config.max_bytes, config.overlap_bytes),
     };
 
+    chunk_with_semantic_config(text, &config, &pattern)
+}
+
+fn chunk_with_semantic_config(text: &str, config: &ChunkConfig, pattern: &Regex) -> Vec<String> {
     let mut split_points: Vec<usize> = vec![0];
     for m in pattern.find_iter(text) {
         let pos = m.start();
@@ -307,5 +380,29 @@ mod tests {
     fn test_expand_query_turkish() {
         let variants = expand_query("bu dosya için arama");
         assert!(variants.iter().any(|v| v == "dosya arama"));
+    }
+
+    #[test]
+    fn test_override_chunk_size_zero_clamps_to_100() {
+        let text = "a".repeat(500);
+        let chunks = semantic_chunk_with_overrides(&text, "xyz", Some(0), None);
+        assert!(chunks.iter().all(|c| c.len() <= 100));
+        assert!(chunks.len() > 1);
+    }
+
+    #[test]
+    fn test_override_none_uses_defaults() {
+        let text = "some text";
+        let default_chunks = semantic_chunk(text, "rs");
+        let override_chunks = semantic_chunk_with_overrides(text, "rs", None, None);
+        assert_eq!(default_chunks, override_chunks);
+    }
+
+    #[test]
+    fn test_override_custom_values() {
+        let text = "a".repeat(1000);
+        let chunks = semantic_chunk_with_overrides(&text, "xyz", Some(200), Some(50));
+        assert!(chunks.iter().all(|c| c.len() <= 200));
+        assert!(chunks.len() > 1);
     }
 }

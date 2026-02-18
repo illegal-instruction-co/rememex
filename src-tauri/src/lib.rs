@@ -13,40 +13,50 @@ use std::io::Write;
 use tauri::{Emitter, Manager};
 use tauri::menu::{Menu, MenuItem, MenuEvent};
 use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 use tokio::sync::Mutex;
 
-use config::{ConfigState, get_embedding_model};
+use config::{ConfigState, get_embedding_model, parse_hotkey};
 use state::{DbState, ModelState, RerankerState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let config_dir = std::path::PathBuf::from(
+        std::env::var("APPDATA").expect("APPDATA not set")
+    ).join("com.recall-lite.app");
+    std::fs::create_dir_all(&config_dir).ok();
+    let config_path = config_dir.join("config.json");
+    let config = config::load_config(&config_path);
+
+    let shortcut = parse_hotkey(&config.hotkey);
+    let always_on_top = config.always_on_top;
+    let launch_at_startup = config.launch_at_startup;
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
 
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(Shortcut::new(Some(Modifiers::ALT), Code::Space))
+                .with_shortcut(shortcut)
                 .unwrap()
-                .with_handler(|app, shortcut, event| {
+                .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        if shortcut.matches(Modifiers::ALT, Code::Space) {
-                            if let Some(window) = app.get_webview_window("main") {
-                                if window.is_visible().unwrap_or(false) {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
                     }
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
             let app_data = app
                 .path()
                 .app_data_dir()
@@ -69,6 +79,17 @@ pub fn run() {
                 use window_vibrancy::apply_mica;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = apply_mica(&window, Some(true));
+                    let _ = window.set_always_on_top(always_on_top);
+                }
+            }
+
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let autostart = app.autolaunch();
+                if launch_at_startup {
+                    let _ = autostart.enable();
+                } else {
+                    let _ = autostart.disable();
                 }
             }
 
@@ -106,9 +127,6 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-
-            let config_path = app_data.join("config.json");
-            let config = config::load_config(&config_path);
 
             let model_enum = get_embedding_model(&config.embedding_model);
 

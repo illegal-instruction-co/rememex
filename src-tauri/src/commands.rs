@@ -266,7 +266,12 @@ pub async fn index_folder(
     let ms = model_state.inner().clone();
     let app_handle = app.clone();
 
-    let count = indexer::index_directory(&dir, &table_name, &db, &ms, move |current, total, path| {
+    let indexing_config = {
+        let config = config_state.config.lock().await;
+        config.indexing.clone()
+    };
+
+    let count = indexer::index_directory(&dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
         let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
     })
     .await
@@ -334,10 +339,15 @@ pub async fn reindex_all(
 
     let ms = model_state.inner().clone();
 
+    let indexing_config = {
+        let config = config_state.config.lock().await;
+        config.indexing.clone()
+    };
+
     let mut total = 0;
     for dir in &paths {
         let app_handle = app.clone();
-        let count = indexer::index_directory(dir, &table_name, &db, &ms, move |current, total, path| {
+        let count = indexer::index_directory(dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
             let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
         })
         .await

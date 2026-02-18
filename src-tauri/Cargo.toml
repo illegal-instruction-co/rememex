@@ -1,6 +1,6 @@
 [package]
 name = "recall-lite"
-version = "1.6.1"
+version = "1.7.0"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"
@@ -43,6 +43,7 @@ rmcp = { version = "0.15", features = ["server", "transport-io", "schemars"] }
 schemars = "0.8"
 notify-debouncer-full = "0.5"
 ignore = "0.4"
+tauri-plugin-autostart = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

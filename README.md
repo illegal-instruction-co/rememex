@@ -28,7 +28,7 @@ local semantic search. you type meaning, it finds files. runs in your system tra
 ## stack
 - rust (tauri 2) + react/ts (vite)
 - [lancedb](https://lancedb.com/) --> embedded vector db, no docker, no server
-- `Multilingual-E5-Base` for embeddings (768-dim, ~280MB)
+- `Multilingual-E5-Base` for embeddings (768-dim, ~1.1GB ONNX)
 - `JINA Reranker v2` for cross-encoding (multilingual)
 - `reverse_geocoder` crate for offline GPS lookups
 - `rayon` for parallel file processing
@@ -37,7 +37,7 @@ local semantic search. you type meaning, it finds files. runs in your system tra
 ## run it
 ```bash
 npm install
-npm run tauri dev        # downloads models on first run (~800mb)
+npm run tauri dev        # downloads models on first run (~2GB total)
 npm run tauri build      # release. use this for real speed
 ```
 
@@ -49,9 +49,7 @@ npm run tauri build      # release. use this for real speed
 - `Shift + Delete` --> nuke current index
 
 ## config
-`%AppData%\com.recall-lite.app\config.json`
-
-models: AllMiniLML6V2, MultilingualE5Small, MultilingualE5Base
+`%AppData%\com.recall-lite.app\config.json` -- see [CONFIG.md](CONFIG.md) for the full breakdown (indexing settings, extra extensions, chunk tuning, .rcignore, model paths).
 
 logs: `%AppData%\com.recall-lite.app\recall.log`
 
