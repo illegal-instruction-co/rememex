@@ -24,6 +24,12 @@
   - packaging: `.AppImage` + `.deb` + flatpak
   - global hotkey: X11/Wayland support via tauri plugin
 - ~~**git history indexing**~~ done -- appends last 50 commit messages to file content before embedding. search "why was this changed" and it finds the commit. no git? no problem, just skips
+- **cloud embedding providers (optional)** -- hybrid approach: local stays default, but users can plug in OpenAI / Gemini / Cohere / custom API for embedding + reranking. benefits:
+  - zero RAM overhead -- no model loading, works on low-spec machines
+  - better quality -- `text-embedding-3-large` or Gemini embeddings beat local fastembed
+  - trait abstraction: `EmbeddingProvider` + `RerankerProvider` -- local model implements it, cloud providers are plug-and-play
+  - user brings their own API key, opts into the privacy trade-off consciously
+  - default is still 100% local, nothing changes for existing users
 - **more file types** -- always
 
 want something? open an issue.
