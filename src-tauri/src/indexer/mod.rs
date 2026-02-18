@@ -2,7 +2,9 @@ pub mod chunking;
 pub mod db;
 pub mod embedding;
 pub mod file_io;
+pub mod git;
 pub mod ocr;
+pub mod pipeline;
 pub mod search;
 
 use std::sync::Arc;
@@ -114,9 +116,12 @@ where
                 }
             }
 
-            let text = file_io::read_file_content_with_config(path, indexing_config)?;
+            let mut text = file_io::read_file_content_with_config(path, indexing_config)?;
             if text.trim().is_empty() {
                 return None;
+            }
+            if let Some(git_ctx) = git::get_commit_context(path) {
+                text.push_str(&git_ctx);
             }
 
             let ext = path
@@ -150,8 +155,11 @@ where
             }
         }
 
-        if let Some(text) = file_io::read_file_content_with_ocr(path) {
+        if let Some(mut text) = file_io::read_file_content_with_ocr(path).await {
             if !text.trim().is_empty() {
+                if let Some(git_ctx) = git::get_commit_context(path) {
+                    text.push_str(&git_ctx);
+                }
                 let ext = path
                     .extension()
                     .and_then(|s| s.to_str())
@@ -304,15 +312,18 @@ pub async fn index_single_file(
         .to_lowercase();
 
     let text = if ocr::is_image_extension(&ext) {
-        file_io::read_file_content_with_ocr(file_path)
+        file_io::read_file_content_with_ocr(file_path).await
     } else {
         file_io::read_file_content(file_path)
     };
 
-    let text = match text {
+    let mut text = match text {
         Some(t) if !t.trim().is_empty() => t,
         _ => return Ok(false),
     };
+    if let Some(git_ctx) = git::get_commit_context(file_path) {
+        text.push_str(&git_ctx);
+    }
 
     let chunks = chunking::semantic_chunk(&text, &ext);
     if chunks.is_empty() {
@@ -348,8 +359,7 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
-    let dim = 768;
-    let table = match db::get_or_create_table(db, table_name, dim).await {
+    let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
         Err(_) => return Ok(()),
     };

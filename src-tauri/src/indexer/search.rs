@@ -59,7 +59,7 @@ pub async fn search_files(
 ) -> Result<Vec<(String, String, f32)>> {
     let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
-        Err(_) => return Ok(vec![]),
+        Err(_) => return Err(anyhow!("No index found for '{}'. Index some folders first.", table_name)),
     };
 
     let schema = table.schema().await?;
@@ -179,7 +179,7 @@ pub async fn search_fts(
 ) -> Result<Vec<(String, String)>> {
     let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
-        Err(_) => return Ok(vec![]),
+        Err(_) => return Err(anyhow!("No index found for '{}'. Index some folders first.", table_name)),
     };
 
     let fts_query = FullTextSearchQuery::new(query.to_string());

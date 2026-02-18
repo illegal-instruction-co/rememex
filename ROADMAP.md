@@ -14,6 +14,7 @@
   - ~~agent-triggered indexing~~ **intentionally excluded** -- indexing takes minutes and agents shouldn't silently index folders. users pick what to index from the GUI. that's a security boundary, not a missing feature
   - the goal: make recall-lite the local private alternative to greptile/sourcegraph for AI-assisted coding
 - **linux / mac** -- need cross-platform alternatives for OCR and mica backdrop
+- ~~**git history indexing**~~ done -- appends last 50 commit messages to file content before embedding. search "why was this changed" and it finds the commit. no git? no problem, just skips
 - **more file types** -- always
 
 want something? open an issue.

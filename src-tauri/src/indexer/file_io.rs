@@ -204,7 +204,7 @@ pub fn read_file_content_with_config(path: &Path, config: &IndexingConfig) -> Op
     }
 }
 
-pub fn read_file_content_with_ocr(path: &Path) -> Option<String> {
+pub async fn read_file_content_with_ocr(path: &Path) -> Option<String> {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -212,11 +212,7 @@ pub fn read_file_content_with_ocr(path: &Path) -> Option<String> {
         .to_lowercase();
 
     if super::ocr::is_image_extension(&ext) {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(super::ocr::extract_text_from_image(path))
-                .ok()
-        })
+        super::ocr::extract_text_from_image(path).await.ok()
     } else {
         read_file_content(path)
     }

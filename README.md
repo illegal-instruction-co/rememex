@@ -1,83 +1,52 @@
-# Recall Lite (local-mind)
+# Recall Lite
 
-Windows search sucks. Copilot is creepy. I needed something that finds my sh*t without sending my screen to the cloud.
+local semantic search for windows. you type meaning, it finds files. nothing leaves your machine.
 
-So I built this.
+**windows 10+ only.** uses UWP OCR and mica backdrop -- no mac/linux yet. first run downloads ~2GB of models, needs internet once.
 
 ![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
 
 ![Search](https://github.com/user-attachments/assets/98407df3-1984-4f3d-9cd5-21cbfdc4cb85)
 
-Spotlight can't find what you mean. This can.
-
 ## what it does
-local semantic search. you type meaning, it finds files. runs in your system tray, never phones home.
 
-- indexes 50+ file types (pdf, images, code, configs, markdown, csv, logs, dotfiles, whatever)
-- OCR on images via windows built-in engine. zero install
-- reads EXIF from photos --> camera, lens, aperture, ISO, focal length, gps coordinates
-- **reverse geocodes GPS to actual city names**. so yeah you can search "photos from istanbul" and it works
-- dates from EXIF get expanded to human words --> day names, months, time of day, season, in both english and turkish. search "summer morning" and find a photo from july
-- hybrid search: vector similarity + full-text + JINA cross-encoder reranker
-- query expansion strips stop words (EN + TR), generates keyword variants
-- smart chunking --> splits rust at `fn`/`struct`, python at `def`/`class`, markdown at headers, yaml at top-level keys. chunk sizes tuned per format
-- semantic containers --> isolate work/personal/research. each gets its own DB table. delete one, zero remnants
-- parallel file extraction via rayon --> all your CPU cores working at once
-- i18n support --> JSON locale files, auto-detects system language. drop a json file to add your language
-
-## stack
-- rust (tauri 2) + react/ts (vite)
-- [lancedb](https://lancedb.com/) --> embedded vector db, no docker, no server
-- `Multilingual-E5-Base` for embeddings (768-dim, ~1.1GB ONNX)
-- `JINA Reranker v2` for cross-encoding (multilingual)
-- `reverse_geocoder` crate for offline GPS lookups
-- `rayon` for parallel file processing
-- windows mica/acrylic backdrop. looks native
+- indexes 120+ file types (code, docs, images, configs, whatever)
+- OCR on images via windows built-in engine
+- reads EXIF → reverse geocodes GPS to city names. search "photos from istanbul" and it works
+- EXIF dates → human words. "summer morning" finds a photo from july at 8am
+- hybrid search: vector + full-text + JINA cross-encoder reranker
+- smart chunking per language (rust at `fn`/`struct`, python at `def`/`class`, etc)
+- semantic containers for isolation (work/personal/research)
+- MCP server for AI agents. [details →](MCP.md)
 
 ## run it
 ```bash
 npm install
-npm run tauri dev        # downloads models on first run (~2GB total)
-npm run tauri build      # release. use this for real speed
+npm run tauri dev        # downloads ~2GB models on first run
+npm run tauri build      # release build, use this for real speed
 ```
 
-## shortcuts
-- `Alt + Space` --> toggle window (global)
-- `Ctrl + O` --> pick folder to index
-- `up/down` --> navigate, `Enter` --> open file
-- `Esc` --> clear
-- `Shift + Delete` --> nuke current index
+`Alt+Space` to toggle. config & docs → [CONFIG.md](CONFIG.md)
 
-## config
-`%AppData%\com.recall-lite.app\config.json` -- see [CONFIG.md](CONFIG.md) for the full breakdown (indexing settings, extra extensions, chunk tuning, .rcignore, model paths).
+## agentic benchmark
 
-logs: `%AppData%\com.recall-lite.app\recall.log`
+same 5 tasks, same codebase. grep vs recall-lite MCP:
 
-## misc
-- incremental indexing (mtime check, skips unchanged)
-- streams embeddings in 256-chunk batches, constant memory
-- search works during indexing --> model lock per batch, not per session
-- reranker runs on blocking threadpool so it doesnt choke async
-- auto-migrates old configs, retries model load 3x, cleans up legacy cache
-- release builds only. debug is 10x slower thats normal
+| task | grep | recall-lite |
+|------|------|-------------|
+| "find where GPS coords become city names" | grep "GPS" → 0. grep "geocode" → found file, need to open. **3 steps** | **1 step** |
+| "find the quality filter threshold" | grep "threshold" → 0 (code says `>= 25.0`). **failed** | **1 step** |
+| "find dedup logic for best chunk per file" | grep "dedup" → 0. grep "best" → noise. **3-5 steps** | **1 step** |
+| "find config migration handling" | grep "legacy" → wrong file. **wrong answer** | **1 step** |
+| "find embedding batch size constant" | grep "batch_size" → 0 (it's `EMBED_BATCH_SIZE`). **failed** | **1 step** |
 
-## MCP server -- built for AI agents
+**grep needs the exact keyword. recall-lite needs the idea.**
 
-one exe. plug it into cursor, claude desktop, copilot, windsurf, whatever. your AI gets full access to your local codebase without cloud APIs.
-
-7 tools, zero round-trips:
-- **`recall_search`** -- semantic + keyword hybrid search with filtering (`top_k`, `file_extensions`, `path_prefix`, `context_bytes`)
-- **`recall_read_file`** -- agent reads file content directly (with line ranges). find → read in one session
-- **`recall_list_files`** -- browse indexed file tree with filters
-- **`recall_index_status`** -- check if index is fresh before searching
-- **`recall_diff`** -- what changed recently? instant context at conversation start
-- **`recall_related`** -- find semantically similar files via vector proximity
-- **`recall_list_containers`** -- list available search scopes
-
-setup & config → [MCP.md](MCP.md)
+## stack
+rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base, JINA Reranker v2, rayon
 
 ## roadmap
-see [ROADMAP.md](ROADMAP.md).
+[ROADMAP.md](ROADMAP.md)
 
 ## license
-MIT. do whatever.
+MIT

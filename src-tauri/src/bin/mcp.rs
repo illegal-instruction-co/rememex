@@ -9,7 +9,7 @@ use rmcp::tool;
 use rmcp::transport::stdio;
 use rmcp::{tool_handler, tool_router, schemars, ErrorData as McpError, ServerHandler, ServiceExt};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::sync::Mutex;
 
 use recall_lite_lib::config::{get_embedding_model, get_table_name, load_config, Config};
@@ -49,12 +49,6 @@ struct SearchParams {
     context_bytes: Option<usize>,
 }
 
-#[derive(Serialize)]
-struct SearchResultItem {
-    path: String,
-    snippet: String,
-    score: f32,
-}
 
 #[derive(Deserialize, schemars::JsonSchema)]
 struct ReadFileParams {
@@ -245,58 +239,7 @@ impl RecallServer {
 
         let used_hybrid = !fts_results.is_empty();
 
-        let mut scored: Vec<SearchResultItem> = if used_reranker {
-            final_results
-                .into_iter()
-                .map(|(path, snippet, raw_score)| {
-                    let sigmoid = 1.0 / (1.0 + (-raw_score).exp());
-                    SearchResultItem {
-                        path,
-                        snippet,
-                        score: sigmoid * 100.0,
-                    }
-                })
-                .collect()
-        } else if used_hybrid {
-            let max_rrf = final_results.first().map(|(_, _, s)| *s).unwrap_or(1.0);
-            final_results
-                .into_iter()
-                .map(|(path, snippet, rrf_score)| {
-                    let pct = if max_rrf > 0.0 {
-                        (rrf_score / max_rrf) * 100.0
-                    } else {
-                        0.0
-                    };
-                    SearchResultItem {
-                        path,
-                        snippet,
-                        score: pct,
-                    }
-                })
-                .collect()
-        } else {
-            final_results
-                .into_iter()
-                .map(|(path, snippet, cosine_dist)| {
-                    let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
-                    SearchResultItem {
-                        path,
-                        snippet,
-                        score: similarity * 100.0,
-                    }
-                })
-                .collect()
-        };
-
-        scored.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        if used_reranker {
-            scored.retain(|r| r.score >= 25.0);
-        }
-        scored.truncate(top_k);
+        let mut scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, top_k);
 
         for item in &mut scored {
             if item.snippet.len() > context_bytes {
