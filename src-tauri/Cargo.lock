@@ -7194,42 +7194,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "recall-lite"
-version = "1.9.5"
-dependencies = [
- "anyhow",
- "arrow-array",
- "arrow-schema",
- "chrono",
- "fastembed",
- "futures",
- "git2",
- "ignore",
- "kamadak-exif",
- "lancedb",
- "mimalloc",
- "notify-debouncer-full",
- "pdf-extract",
- "rayon",
- "regex",
- "reverse_geocoder",
- "rmcp",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "tokio",
- "window-vibrancy 0.7.1",
- "windows",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7314,6 +7278,44 @@ name = "relative-path"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
+
+[[package]]
+name = "rememex"
+version = "1.9.5"
+dependencies = [
+ "anyhow",
+ "arrow-array",
+ "arrow-schema",
+ "async-trait",
+ "chrono",
+ "fastembed",
+ "futures",
+ "git2",
+ "ignore",
+ "kamadak-exif",
+ "lancedb",
+ "mimalloc",
+ "notify-debouncer-full",
+ "pdf-extract",
+ "rayon",
+ "regex",
+ "reqwest 0.12.28",
+ "reverse_geocoder",
+ "rmcp",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "tokio",
+ "window-vibrancy 0.7.1",
+ "windows",
+]
 
 [[package]]
 name = "reqwest"

@@ -86,7 +86,7 @@ interface ResultsListProps {
 
 export default function ResultsList({
     results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, listRef,
-}: ResultsListProps) {
+}: Readonly<ResultsListProps>) {
     const { t } = useLocale();
     const containerRef = useRef<HTMLDivElement>(null);
     const [dims, setDims] = useState({ width: 0, height: 0 });

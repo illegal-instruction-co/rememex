@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
-use crate::config::{get_table_name, ConfigState};
+use crate::config::{get_table_name, ConfigState, EmbeddingProviderConfig};
 use crate::indexer;
+use crate::indexer::embedding_provider::RemoteProviderConfig;
 use crate::state::{
-    ContainerListItem, DbState, IndexingProgress, ModelState, RerankerState, SearchResult,
+    ContainerListItem, DbState, IndexingProgress, ProviderState, RerankerState, SearchResult,
 };
 use crate::watcher;
 
@@ -80,7 +81,7 @@ pub async fn set_active_container(
     name: String,
     config_state: tauri::State<'_, ConfigState>,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
@@ -99,7 +100,7 @@ pub async fn set_active_container(
         watcher_state.inner(),
         config_state.inner(),
         db,
-        model_state.inner().clone(),
+        provider_state.inner().clone(),
         app,
     ).await;
 
@@ -110,7 +111,7 @@ pub async fn set_active_container(
 pub async fn search(
     query: String,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     reranker_state: tauri::State<'_, Arc<Mutex<RerankerState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
@@ -120,12 +121,12 @@ pub async fn search(
     };
 
     let query_vector = {
-        let mut guard = model_state.lock().await;
+        let guard = provider_state.lock().await;
         if let Some(err) = &guard.init_error {
-            return Err(format!("Model failed to load: {}", err));
+            return Err(format!("Embedding provider failed: {}", err));
         }
-        let model = guard.model.as_mut().ok_or("AI model is loading... Please wait a moment.")?;
-        indexer::embed_query(model, &query)
+        let provider = guard.provider.as_ref().ok_or("Embedding provider is loading... Please wait a moment.")?;
+        provider.embed_query(&query).await
             .map_err(|e| e.to_string())?
     };
 
@@ -175,7 +176,7 @@ pub async fn index_folder(
     app: tauri::AppHandle,
     dir: String,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     config_state: tauri::State<'_, ConfigState>,
     watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<String, String> {
@@ -201,7 +202,7 @@ pub async fn index_folder(
         guard.db.clone()
     };
 
-    let ms = model_state.inner().clone();
+    let ps = provider_state.inner().clone();
     let app_handle = app.clone();
 
     let indexing_config = {
@@ -209,7 +210,7 @@ pub async fn index_folder(
         config.indexing.clone()
     };
 
-    let count = indexer::index_directory(&dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
+    let count = indexer::index_directory(&dir, &table_name, &db, &ps, &indexing_config, move |current, total, path| {
         let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
     })
     .await
@@ -225,7 +226,7 @@ pub async fn index_folder(
         watcher_state.inner(),
         config_state.inner(),
         db2,
-        model_state.inner().clone(),
+        provider_state.inner().clone(),
         app,
     ).await;
 
@@ -256,7 +257,7 @@ pub async fn reset_index(
 pub async fn reindex_all(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<String, String> {
     let (table_name, paths) = {
@@ -275,7 +276,7 @@ pub async fn reindex_all(
         guard.db.clone()
     };
 
-    let ms = model_state.inner().clone();
+    let ps = provider_state.inner().clone();
 
     let indexing_config = {
         let config = config_state.config.lock().await;
@@ -285,7 +286,7 @@ pub async fn reindex_all(
     let mut total = 0;
     for dir in &paths {
         let app_handle = app.clone();
-        let count = indexer::index_directory(dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
+        let count = indexer::index_directory(dir, &table_name, &db, &ps, &indexing_config, move |current, total, path| {
             let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
         })
         .await
@@ -309,6 +310,12 @@ pub struct AppConfig {
     pub chunk_overlap: Option<usize>,
     pub extra_extensions: Vec<String>,
     pub excluded_extensions: Vec<String>,
+    pub provider_type: String,
+    pub remote_endpoint: String,
+    pub remote_api_key: String,
+    pub remote_model: String,
+    pub remote_dimensions: usize,
+    pub first_run: bool,
 }
 
 #[tauri::command]
@@ -316,6 +323,23 @@ pub async fn get_config(
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<AppConfig, String> {
     let config = config_state.config.lock().await;
+    let (provider_type, remote_endpoint, remote_api_key, remote_model, remote_dimensions) =
+        match &config.embedding_provider {
+            EmbeddingProviderConfig::Local { .. } => (
+                "local".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                0,
+            ),
+            EmbeddingProviderConfig::Remote(rc) => (
+                "remote".to_string(),
+                rc.endpoint.clone(),
+                rc.api_key.clone().unwrap_or_default(),
+                rc.model.clone(),
+                rc.dimensions,
+            ),
+        };
     Ok(AppConfig {
         always_on_top: config.always_on_top,
         launch_at_startup: config.launch_at_startup,
@@ -326,6 +350,12 @@ pub async fn get_config(
         chunk_overlap: config.indexing.chunk_overlap,
         extra_extensions: config.indexing.extra_extensions.clone(),
         excluded_extensions: config.indexing.excluded_extensions.clone(),
+        provider_type,
+        remote_endpoint,
+        remote_api_key,
+        remote_model,
+        remote_dimensions,
+        first_run: config.first_run,
     })
 }
 
@@ -340,6 +370,12 @@ pub struct ConfigUpdate {
     pub chunk_overlap: Option<Option<usize>>,
     pub extra_extensions: Option<Vec<String>>,
     pub excluded_extensions: Option<Vec<String>>,
+    pub provider_type: Option<String>,
+    pub remote_endpoint: Option<String>,
+    pub remote_api_key: Option<String>,
+    pub remote_model: Option<String>,
+    pub remote_dimensions: Option<usize>,
+    pub first_run: Option<bool>,
 }
 
 #[tauri::command]
@@ -347,7 +383,10 @@ pub async fn update_config(
     app: tauri::AppHandle,
     updates: ConfigUpdate,
     config_state: tauri::State<'_, ConfigState>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
 ) -> Result<(), String> {
+    let mut provider_changed = false;
+
     {
         let mut config = config_state.config.lock().await;
 
@@ -379,6 +418,10 @@ pub async fn update_config(
 
         if let Some(ref v) = updates.embedding_model {
             config.embedding_model = v.clone();
+            if let EmbeddingProviderConfig::Local { ref mut model } = config.embedding_provider {
+                *model = v.clone();
+                provider_changed = true;
+            }
         }
 
         if let Some(v) = updates.chunk_size {
@@ -396,8 +439,99 @@ pub async fn update_config(
         if let Some(ref v) = updates.excluded_extensions {
             config.indexing.excluded_extensions = v.clone();
         }
+
+        if let Some(ref pt) = updates.provider_type {
+            match pt.as_str() {
+                "local" => {
+                    let model_name = config.embedding_model.clone();
+                    config.embedding_provider = EmbeddingProviderConfig::Local { model: model_name };
+                    provider_changed = true;
+                }
+                "remote" => {
+                    let endpoint = updates.remote_endpoint.clone().unwrap_or_default();
+                    let api_key = updates.remote_api_key.clone().filter(|k| !k.is_empty());
+                    let model = updates.remote_model.clone().unwrap_or_default();
+                    let dimensions = updates.remote_dimensions.unwrap_or(1024);
+                    config.embedding_provider = EmbeddingProviderConfig::Remote(RemoteProviderConfig {
+                        endpoint,
+                        api_key,
+                        model,
+                        dimensions,
+                    });
+                    provider_changed = true;
+                }
+                _ => {}
+            }
+        } else if let EmbeddingProviderConfig::Remote(ref mut rc) = config.embedding_provider {
+            if let Some(ref v) = updates.remote_endpoint {
+                rc.endpoint = v.clone();
+                provider_changed = true;
+            }
+            if let Some(ref v) = updates.remote_api_key {
+                rc.api_key = if v.is_empty() { None } else { Some(v.clone()) };
+                provider_changed = true;
+            }
+            if let Some(ref v) = updates.remote_model {
+                rc.model = v.clone();
+                provider_changed = true;
+            }
+            if let Some(v) = updates.remote_dimensions {
+                rc.dimensions = v;
+                provider_changed = true;
+            }
+        }
+
+        if let Some(v) = updates.first_run {
+            config.first_run = v;
+        }
     }
 
     config_state.save().await?;
+
+    if provider_changed {
+        let config = config_state.config.lock().await;
+        match &config.embedding_provider {
+            EmbeddingProviderConfig::Local { model } => {
+                let model_enum = crate::config::get_embedding_model(model);
+                let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+                let models_path = app_data.join("models");
+                drop(config);
+
+                let ps = provider_state.inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    match indexer::load_model(model_enum, models_path) {
+                        Ok(model) => {
+                            use crate::indexer::embedding_provider::LocalProvider;
+                            use crate::state::ModelState;
+                            let model_state = Arc::new(Mutex::new(ModelState {
+                                model: Some(model),
+                                init_error: None,
+                                cached_dim: None,
+                            }));
+                            let mut guard = ps.lock().await;
+                            guard.provider = Some(Box::new(LocalProvider { model_state }));
+                            guard.init_error = None;
+                            let _ = app.emit("model-loaded", ());
+                        }
+                        Err(e) => {
+                            let mut guard = ps.lock().await;
+                            guard.init_error = Some(e.to_string());
+                            let _ = app.emit("model-load-error", e.to_string());
+                        }
+                    }
+                });
+            }
+            EmbeddingProviderConfig::Remote(rc) => {
+                use crate::indexer::embedding_provider::RemoteProvider;
+                let provider = RemoteProvider::new(rc.clone());
+                let mut guard = provider_state.lock().await;
+                guard.provider = Some(Box::new(provider));
+                guard.init_error = None;
+                drop(config);
+                let _ = app.emit("model-loaded", ());
+            }
+        }
+    }
+
     Ok(())
 }

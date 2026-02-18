@@ -12,6 +12,7 @@ import ResultsList from "./components/ResultsList";
 import StatusBar from "./components/StatusBar";
 import Settings from "./components/Settings";
 import type { SearchResult, IndexingProgress, ContainerItem } from "./types";
+import logoSrc from "./assets/rememex.png";
 import "./App.css";
 
 function getFileName(path: string): string {
@@ -35,9 +36,17 @@ function App() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<ListImperativeAPI>(null);
+  const isFirstRunRef = useRef(false);
 
   useEffect(() => {
     fetchContainers();
+    invoke<{ first_run: boolean; provider_type: string }>("get_config").then((c) => {
+      if (c.first_run) {
+        isFirstRunRef.current = true;
+        setSettingsOpen(true);
+        invoke("update_config", { updates: { first_run: false } }).catch(() => { });
+      }
+    }).catch(() => { });
   }, []);
 
   async function fetchContainers() {
@@ -98,13 +107,13 @@ function App() {
 
   async function handleSwitchContainer(name: string) {
     if (name === activeContainer) return;
+    setActiveContainer(name);
+    setResults([]);
+    setQuery("");
+    setStatus(t("status_switched", { name }));
+    searchInputRef.current?.focus();
     try {
       await invoke("set_active_container", { name });
-      setActiveContainer(name);
-      setResults([]);
-      setQuery("");
-      setStatus(t("status_switched", { name }));
-      searchInputRef.current?.focus();
     } catch (e) {
       console.error(e);
     }
@@ -281,7 +290,7 @@ function App() {
 
   return (
     <>
-      <div className="app-container">
+      <div className="app-container" style={{ '--logo-url': `url(${logoSrc})` } as React.CSSProperties}>
         <Sidebar
           containers={containers}
           activeContainer={activeContainer}
@@ -323,7 +332,24 @@ function App() {
         </div>
       </div>
       <ModalProvider />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Settings open={settingsOpen} onClose={() => {
+        setSettingsOpen(false);
+        if (isFirstRunRef.current) {
+          isFirstRunRef.current = false;
+          invoke<{ provider_type: string; remote_endpoint: string; remote_api_key: string; remote_model: string; remote_dimensions: number; embedding_model: string }>("get_config").then((c) => {
+            invoke("update_config", {
+              updates: {
+                provider_type: c.provider_type,
+                remote_endpoint: c.remote_endpoint,
+                remote_api_key: c.remote_api_key,
+                remote_model: c.remote_model,
+                remote_dimensions: c.remote_dimensions,
+                embedding_model: c.embedding_model,
+              }
+            }).catch(() => { });
+          }).catch(() => { });
+        }
+      }} />
     </>
   );
 }

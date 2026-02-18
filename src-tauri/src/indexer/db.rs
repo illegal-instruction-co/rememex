@@ -108,20 +108,17 @@ pub async fn get_indexed_mtimes(table: &Table) -> Result<HashMap<String, i64>> {
 }
 
 pub async fn get_or_create_table(db: &Connection, table_name: &str, dim: usize) -> Result<Table> {
-    match db.open_table(table_name).execute().await {
-        Ok(table) => {
-            let schema = table.schema().await?;
-            let has_mtime = schema.field_with_name("mtime").is_ok();
-            if let Ok(field) = schema.field_with_name("vector") {
-                if let DataType::FixedSizeList(_, size) = field.data_type() {
-                    if *size == dim as i32 && has_mtime {
-                        return Ok(table);
-                    }
+    if let Ok(table) = db.open_table(table_name).execute().await {
+        let schema = table.schema().await?;
+        let has_mtime = schema.field_with_name("mtime").is_ok();
+        if let Ok(field) = schema.field_with_name("vector") {
+            if let DataType::FixedSizeList(_, size) = field.data_type() {
+                if *size == dim as i32 && has_mtime {
+                    return Ok(table);
                 }
             }
-            let _ = db.drop_table(table_name, &[]).await;
         }
-        Err(_) => {}
+        let _ = db.drop_table(table_name, &[]).await;
     }
 
     let schema = Arc::new(make_schema(dim));

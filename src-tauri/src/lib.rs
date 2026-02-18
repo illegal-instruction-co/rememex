@@ -16,14 +16,14 @@ use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 use tokio::sync::Mutex;
 
-use config::{ConfigState, get_embedding_model, parse_hotkey};
-use state::{DbState, ModelState, RerankerState};
+use config::{ConfigState, EmbeddingProviderConfig, get_embedding_model, parse_hotkey};
+use state::{DbState, ModelState, ProviderState, RerankerState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_dir = std::path::PathBuf::from(
         std::env::var("APPDATA").expect("APPDATA not set")
-    ).join("com.recall-lite.app");
+    ).join("com.rememex.app");
     std::fs::create_dir_all(&config_dir).ok();
     let config_path = config_dir.join("config.json");
     let config = config::load_config(&config_path);
@@ -93,7 +93,7 @@ pub fn run() {
                 }
             }
 
-            let show_i = MenuItem::with_id(app, "show", "Show Recall", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show Rememex", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
@@ -128,15 +128,8 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let model_enum = get_embedding_model(&config.embedding_model);
-
-            app.manage(ConfigState {
-                config: Arc::new(Mutex::new(config)),
-                path: config_path,
-            });
-
-            let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None, cached_dim: None }));
-            app.manage(model_state.clone());
+            let provider_state = Arc::new(Mutex::new(ProviderState { provider: None, init_error: None }));
+            app.manage(provider_state.clone());
 
             let reranker_state = Arc::new(Mutex::new(RerankerState { reranker: None, init_error: None }));
             app.manage(reranker_state.clone());
@@ -148,16 +141,25 @@ pub fn run() {
             let models_path = app_data.join("models");
             std::fs::create_dir_all(&models_path).ok();
 
-            let log_path = app_data.join("recall.log");
-            let _ = fs::write(&log_path, "Starting model load...\n");
+            let log_path = app_data.join("rememex.log");
+            let _ = fs::write(&log_path, "Starting provider init...\n");
 
             let app_handle = app.handle().clone();
 
             let reranker_models_path = models_path.clone();
             let reranker_log = log_path.clone();
-            let watcher_model_state = model_state.clone();
+            let watcher_provider_state = provider_state.clone();
             let watcher_state_for_model = watcher_state.clone();
             let watcher_app = app.handle().clone();
+
+            let embedding_provider_config = config.embedding_provider.clone();
+            let is_first_run = config.first_run;
+
+            app.manage(ConfigState {
+                config: Arc::new(Mutex::new(config)),
+                path: config_path,
+            });
+
             let watcher_config: ConfigState = {
                 let cs: tauri::State<ConfigState> = app.state();
                 ConfigState { config: cs.config.clone(), path: cs.path.clone() }
@@ -168,57 +170,94 @@ pub fn run() {
                 g.db.clone()
             };
 
-            tauri::async_runtime::spawn(async move {
+            if is_first_run {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                    let _ = writeln!(file, "Loading model to: {:?}", models_path);
+                    let _ = writeln!(file, "First run detected — deferring provider init until user configures settings");
                 }
+            } else {
+                match embedding_provider_config {
+                    EmbeddingProviderConfig::Local { ref model } => {
+                        let model_enum = get_embedding_model(model);
 
-                let mut attempts = 0;
-                let max_attempts = 3;
-                let mut last_error = None;
-                let mut loaded = false;
-
-                while attempts < max_attempts {
-                    attempts += 1;
-                    match indexer::load_model(model_enum.clone(), models_path.clone()) {
-                        Ok(model) => {
+                        tauri::async_runtime::spawn(async move {
                             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                                let _ = writeln!(file, "Model loaded successfully");
+                                let _ = writeln!(file, "Loading local model to: {:?}", models_path);
                             }
-                            let mut state = model_state.lock().await;
-                            state.model = Some(model);
-                            state.init_error = None;
-                            let _ = app_handle.emit("model-loaded", ());
-                            loaded = true;
 
+                            let mut attempts = 0;
+                            let max_attempts = 3;
+                            let mut last_error = None;
+                            let mut loaded = false;
+
+                            while attempts < max_attempts {
+                                attempts += 1;
+                                match indexer::load_model(model_enum.clone(), models_path.clone()) {
+                                    Ok(model) => {
+                                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                                            let _ = writeln!(file, "Model loaded successfully");
+                                        }
+                                        let model_state = Arc::new(Mutex::new(ModelState {
+                                            model: Some(model),
+                                            init_error: None,
+                                            cached_dim: None,
+                                        }));
+                                        let local_provider = indexer::embedding_provider::LocalProvider { model_state };
+                                        let mut guard = provider_state.lock().await;
+                                        guard.provider = Some(Box::new(local_provider));
+                                        guard.init_error = None;
+                                        drop(guard);
+                                        let _ = app_handle.emit("model-loaded", ());
+                                        loaded = true;
+
+                                        watcher::restart(
+                                            &watcher_state_for_model,
+                                            &watcher_config,
+                                            watcher_db.clone(),
+                                            watcher_provider_state.clone(),
+                                            watcher_app.clone(),
+                                        ).await;
+
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                                            let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
+                                        }
+                                        last_error = Some(e);
+                                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                                    }
+                                }
+                            }
+
+                            if !loaded {
+                                if let Some(e) = last_error {
+                                    let mut guard = provider_state.lock().await;
+                                    guard.init_error = Some(e.to_string());
+                                    let _ = app_handle.emit("model-load-error", e.to_string());
+                                }
+                            }
+                        });
+                    }
+                    EmbeddingProviderConfig::Remote(rc) => {
+                        let remote_provider = indexer::embedding_provider::RemoteProvider::new(rc);
+                        let mut guard = provider_state.blocking_lock();
+                        guard.provider = Some(Box::new(remote_provider));
+                        guard.init_error = None;
+                        drop(guard);
+                        let _ = app_handle.emit("model-loaded", ());
+
+                        tauri::async_runtime::spawn(async move {
                             watcher::restart(
                                 &watcher_state_for_model,
                                 &watcher_config,
                                 watcher_db.clone(),
-                                watcher_model_state.clone(),
+                                watcher_provider_state.clone(),
                                 watcher_app.clone(),
                             ).await;
-
-                            break;
-                        }
-                        Err(e) => {
-                            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                                let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
-                            }
-                            last_error = Some(e);
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        }
+                        });
                     }
                 }
-
-                if !loaded {
-                    if let Some(e) = last_error {
-                        let mut state = model_state.lock().await;
-                        state.init_error = Some(e.to_string());
-                        let _ = app_handle.emit("model-load-error", e.to_string());
-                    }
-                }
-            });
+            }
 
             tauri::async_runtime::spawn(async move {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {

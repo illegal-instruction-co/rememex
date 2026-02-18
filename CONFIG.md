@@ -1,6 +1,6 @@
 # config
 
-`%AppData%\com.recall-lite.app\config.json`
+`%AppData%\com.rememex.app\config.json`
 
 the app creates this on first run. you can hand-edit it. if you break the JSON, it'll reset to defaults and migrate what it can. don't worry about it.
 
@@ -10,23 +10,63 @@ want autocomplete and red squiggles in your editor? add this to the top of your 
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json"
+  "$schema": "https://raw.githubusercontent.com/illegal-instruction-co/rememex/main/config.schema.json"
 }
 ```
 
 vscode will pick it up automatically. schema lives at [`config.schema.json`](config.schema.json) in the repo.
 
-## embedding model
+## embedding provider
+
+default is local -- models run on your machine, nothing leaves it.
+
+```mermaid
+graph LR
+    CFG[config.json] --> D{type?}
+    D -->|local| L[fastembed ONNX]
+    D -->|remote| R[OpenAI-compatible API]
+    L --> V[vectors]
+    R --> V
+    V --> DB[(lancedb)]
+```
+
+### local (default)
 
 ```json
 {
-  "embedding_model": "MultilingualE5Base"
+  "embedding_provider": {
+    "type": "local",
+    "model": "MultilingualE5Base"
+  }
 }
 ```
 
-options: `AllMiniLML6V2`, `MultilingualE5Small`, `MultilingualE5Base`
+models: `AllMiniLML6V2`, `MultilingualE5Small`, `MultilingualE5Base`
 
-change this and restart. it'll download the new model, build a fresh index. don't mix models with existing indexes -- dimensions won't match and search will silently return garbage.
+change the model and restart. it'll download the new one and rebuild the index. don't mix models with existing indexes -- dimensions won't match and search will silently return garbage.
+
+### remote
+
+```json
+{
+  "embedding_provider": {
+    "type": "remote",
+    "endpoint": "https://api.openai.com/v1/embeddings",
+    "api_key": "sk-...",
+    "model": "text-embedding-3-small",
+    "dimensions": 1536
+  }
+}
+```
+
+any OpenAI-compatible embedding API works (OpenAI, Gemini, Cohere, Ollama, local vLLM, whatever). just point `endpoint` at it.
+
+- **endpoint** -- the embeddings API URL
+- **api_key** -- optional. sent as `Bearer` token. leave empty for local servers
+- **model** -- model name sent in the request body
+- **dimensions** -- output vector size. must match the model. wrong value = broken index
+
+set this from the Settings UI (local/remote toggle) or edit config.json by hand. restart required.
 
 ## hotkey
 
@@ -139,12 +179,12 @@ don't see your extension? add it to `extra_extensions` in config. or open a PR a
 
 ## logs
 
-`%AppData%\com.recall-lite.app\recall.log`
+`%AppData%\com.rememex.app\rememex.log`
 
 model loading, indexing errors, watcher events. check here when something feels broken.
 
 ## models location
 
-`%AppData%\com.recall-lite.app\models\`
+`%AppData%\com.rememex.app\models\`
 
 ~2GB total. downloaded automatically on first run via huggingface hub. if your network is flaky, set `HTTPS_PROXY` env var. the models are ONNX format, managed by fastembed.

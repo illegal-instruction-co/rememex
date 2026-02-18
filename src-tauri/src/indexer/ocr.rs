@@ -122,7 +122,7 @@ fn extract_exif_metadata(path: &Path) -> Result<String> {
         parts.push(format!("Copyright: {}", f.display_value().to_string().replace('"', "")));
     }
     if let Some(f) = exif.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY) {
-        parts.push(format!("{}", f.display_value().to_string().replace('"', "")));
+        parts.push(f.display_value().to_string().replace('"', ""));
     }
 
     if parts.is_empty() {

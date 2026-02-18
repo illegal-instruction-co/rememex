@@ -1,6 +1,7 @@
 pub mod chunking;
 pub mod db;
 pub mod embedding;
+pub mod embedding_provider;
 pub mod file_io;
 pub mod git;
 pub mod ocr;
@@ -16,7 +17,7 @@ use rayon::prelude::*;
 use tokio::sync::Mutex;
 
 use crate::config::IndexingConfig;
-use crate::state::ModelState;
+use crate::state::ProviderState;
 
 use ignore::WalkBuilder;
 
@@ -35,43 +36,38 @@ struct ExtractedFile {
 }
 
 async fn embed_batch(
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>> {
-    let mut guard = model_state.lock().await;
-    let model = guard
-        .model
-        .as_mut()
-        .ok_or_else(|| anyhow!("Model not loaded"))?;
-    embedding::embed_passages(model, texts)
+    let guard = provider_state.lock().await;
+    let provider = guard
+        .provider
+        .as_ref()
+        .ok_or_else(|| anyhow!("Embedding provider not initialized"))?;
+    provider.embed_passages(texts).await
 }
 
-async fn get_model_dim(model_state: &Arc<Mutex<ModelState>>) -> Result<usize> {
-    let mut guard = model_state.lock().await;
-    if let Some(dim) = guard.cached_dim {
-        return Ok(dim);
-    }
-    let model = guard
-        .model
-        .as_mut()
-        .ok_or_else(|| anyhow!("Model not loaded"))?;
-    let dim = embedding::get_model_dimension(model)?;
-    guard.cached_dim = Some(dim);
-    Ok(dim)
+async fn get_provider_dim(provider_state: &Arc<Mutex<ProviderState>>) -> Result<usize> {
+    let guard = provider_state.lock().await;
+    let provider = guard
+        .provider
+        .as_ref()
+        .ok_or_else(|| anyhow!("Embedding provider not initialized"))?;
+    provider.get_dimension().await
 }
 
 pub async fn index_directory<F>(
     root_dir: &str,
     table_name: &str,
     db: &Connection,
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     indexing_config: &IndexingConfig,
     progress_callback: F,
 ) -> Result<usize>
 where
     F: Fn(usize, usize, String) + Send + Sync + 'static,
 {
-    let dim = get_model_dim(model_state).await?;
+    let dim = get_provider_dim(provider_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
 
     let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
@@ -84,7 +80,7 @@ where
         .add_custom_ignore_filename(".rcignore")
         .build()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+        .filter(|e| e.file_type().is_some_and(|ft| ft.is_file()))
         .map(|e| e.into_path())
         .collect();
     let total_files = all_files.len();
@@ -235,9 +231,9 @@ where
                 format!("Embedding batch {}", batches_written),
             );
 
-            let batch_chunks: Vec<db::PendingChunk> = pending_chunks.drain(..).collect();
+            let batch_chunks: Vec<db::PendingChunk> = std::mem::take(&mut pending_chunks);
             let texts: Vec<String> = batch_chunks.iter().map(|c| c.content.clone()).collect();
-            let embeddings = embed_batch(model_state, texts).await?;
+            let embeddings = embed_batch(provider_state, texts).await?;
 
             let records: Vec<db::Record> = batch_chunks
                 .into_iter()
@@ -268,7 +264,7 @@ where
         );
 
         let texts: Vec<String> = pending_chunks.iter().map(|c| c.content.clone()).collect();
-        let embeddings = embed_batch(model_state, texts).await?;
+        let embeddings = embed_batch(provider_state, texts).await?;
 
         let records: Vec<db::Record> = pending_chunks
             .into_iter()
@@ -306,7 +302,7 @@ pub async fn index_single_file(
     file_path: &std::path::Path,
     table_name: &str,
     db: &Connection,
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     use_git_history: bool,
     chunk_size: Option<usize>,
     chunk_overlap: Option<usize>,
@@ -315,7 +311,7 @@ pub async fn index_single_file(
         return Ok(false);
     }
 
-    let dim = get_model_dim(model_state).await?;
+    let dim = get_provider_dim(provider_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
     let path_str = file_path.to_string_lossy().to_string();
     let mtime = file_io::get_file_mtime(file_path);
@@ -357,7 +353,7 @@ pub async fn index_single_file(
     }
 
     let texts: Vec<String> = chunks.clone();
-    let embeddings = embed_batch(model_state, texts).await?;
+    let embeddings = embed_batch(provider_state, texts).await?;
 
     let records: Vec<db::Record> = chunks
         .into_iter()

@@ -5,6 +5,29 @@ use serde::{Deserialize, Serialize};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tokio::sync::Mutex;
 
+use crate::indexer::embedding_provider::RemoteProviderConfig;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum EmbeddingProviderConfig {
+    #[serde(rename = "local")]
+    Local { model: String },
+    #[serde(rename = "remote")]
+    Remote(RemoteProviderConfig),
+}
+
+impl Default for EmbeddingProviderConfig {
+    fn default() -> Self {
+        Self::Local {
+            model: "MultilingualE5Base".to_string(),
+        }
+    }
+}
+
+fn default_provider() -> EmbeddingProviderConfig {
+    EmbeddingProviderConfig::default()
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IndexingConfig {
     #[serde(default)]
@@ -39,7 +62,10 @@ pub struct ContainerInfo {
 pub struct Config {
     #[serde(rename = "$schema", default = "default_schema")]
     pub schema: String,
+    #[serde(default)]
     pub embedding_model: String,
+    #[serde(default = "default_provider")]
+    pub embedding_provider: EmbeddingProviderConfig,
     #[serde(default)]
     pub indexing: IndexingConfig,
     #[serde(default = "default_hotkey")]
@@ -50,10 +76,12 @@ pub struct Config {
     pub launch_at_startup: bool,
     pub containers: HashMap<String, ContainerInfo>,
     pub active_container: String,
+    #[serde(default)]
+    pub first_run: bool,
 }
 
 fn default_schema() -> String {
-    "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json".to_string()
+    "https://raw.githubusercontent.com/illegal-instruction-co/rememex/main/config.schema.json".to_string()
 }
 
 fn default_hotkey() -> String {
@@ -74,12 +102,14 @@ impl Default for Config {
         Self {
             schema: default_schema(),
             embedding_model: "MultilingualE5Base".to_string(),
+            embedding_provider: EmbeddingProviderConfig::default(),
             indexing: IndexingConfig::default(),
             hotkey: default_hotkey(),
             always_on_top: true,
             launch_at_startup: false,
             containers,
             active_container: "Default".to_string(),
+            first_run: true,
         }
     }
 }
@@ -217,6 +247,13 @@ pub fn get_embedding_model(name: &str) -> fastembed::EmbeddingModel {
     }
 }
 
+pub fn get_local_model_name(config: &Config) -> String {
+    match &config.embedding_provider {
+        EmbeddingProviderConfig::Local { model } => model.clone(),
+        _ => config.embedding_model.clone(),
+    }
+}
+
 pub fn load_config(config_path: &std::path::Path) -> Config {
     if !config_path.exists() {
         let default = Config::default();
@@ -252,15 +289,18 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                     });
                 }
                 let default_active = containers.keys().next().cloned().unwrap_or_else(|| "Default".to_string());
+                let em = old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string());
                 Config {
                     schema: default_schema(),
-                    embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
+                    embedding_model: em.clone(),
+                    embedding_provider: EmbeddingProviderConfig::Local { model: em },
                     indexing: IndexingConfig::default(),
                     hotkey: default_hotkey(),
                     always_on_top: true,
                     launch_at_startup: false,
                     active_container: old.active_container.unwrap_or(default_active),
                     containers,
+                    first_run: false,
                 }
             } else {
                 Config::default()
