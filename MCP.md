@@ -51,6 +51,30 @@ agent checks if the index is fresh or empty before wasting time searching.
 
 returns: `total_files`, `total_chunks`, `has_index`, `indexed_paths`, container metadata.
 
+### `recall_diff`
+
+what changed recently? call this at the start of every conversation to get instant context.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `since` | string | required | time window: `"30m"`, `"2h"`, `"1d"`, `"7d"` |
+| `container` | string? | active | which container |
+| `show_diff` | bool? | true | include file preview (first 50 lines) |
+
+returns: changed file paths, timestamps, previews, and detects deleted files.
+
+### `recall_related`
+
+given a file, finds other files with similar meaning. uses vector proximity in embedding space -- not grep, not imports, actual semantic similarity.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `path` | string | required | absolute path to the file |
+| `container` | string? | active | which container |
+| `top_k` | number? | 10 | related files to return (max 30) |
+
+returns: related file paths with similarity scores and snippets.
+
 ### `recall_list_containers`
 
 dumps your containers. names, paths, descriptions, which one's active. no params.
@@ -144,6 +168,10 @@ first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weigh
 **searching wrong stuff** -- defaults to active container. pass `container: "Whatever"` to pick a different one
 
 **access denied on read_file** -- the file isn't inside any indexed container path. index the parent folder first
+
+**recall_diff returns nothing** -- the mtime in the index reflects when files were last indexed, not last edited. re-index after edits
+
+**recall_related says file not found** -- the file hasn't been indexed yet. index first, search second
 
 ## privacy
 

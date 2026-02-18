@@ -15,8 +15,12 @@ pub fn build_filter_expr(
     let mut clauses = Vec::new();
 
     if let Some(prefix) = path_prefix {
-        let escaped = prefix.replace('\'', "''").replace('\\', "\\\\");
-        clauses.push(format!("path LIKE '{}%'", escaped));
+        let escaped = prefix
+            .replace('\\', "\\\\")
+            .replace('\'', "''")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        clauses.push(format!("path LIKE '{}%' ESCAPE '\\'", escaped));
     }
 
     if let Some(exts) = file_extensions {
@@ -24,8 +28,13 @@ pub fn build_filter_expr(
             let ext_clauses: Vec<String> = exts
                 .iter()
                 .map(|ext| {
-                    let clean = ext.trim_start_matches('.').replace('\'', "''");
-                    format!("path LIKE '%.{}'", clean)
+                    let clean = ext
+                        .trim_start_matches('.')
+                        .replace('\\', "\\\\")
+                        .replace('\'', "''")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_");
+                    format!("path LIKE '%.{}' ESCAPE '\\'", clean)
                 })
                 .collect();
             clauses.push(format!("({})", ext_clauses.join(" OR ")));
@@ -296,33 +305,45 @@ mod tests {
     #[test]
     fn test_build_filter_expr_prefix_only() {
         let result = build_filter_expr(Some("src/indexer"), None);
-        assert_eq!(result, Some("path LIKE 'src/indexer%'".to_string()));
+        assert_eq!(result, Some("path LIKE 'src/indexer%' ESCAPE '\\'".to_string()));
     }
 
     #[test]
     fn test_build_filter_expr_extensions_only() {
         let exts = vec!["rs".to_string(), "ts".to_string()];
         let result = build_filter_expr(None, Some(&exts));
-        assert_eq!(result, Some("(path LIKE '%.rs' OR path LIKE '%.ts')".to_string()));
+        assert_eq!(result, Some("(path LIKE '%.rs' ESCAPE '\\' OR path LIKE '%.ts' ESCAPE '\\')".to_string()));
     }
 
     #[test]
     fn test_build_filter_expr_both() {
         let exts = vec!["py".to_string()];
         let result = build_filter_expr(Some("lib/"), Some(&exts));
-        assert_eq!(result, Some("path LIKE 'lib/%' AND (path LIKE '%.py')".to_string()));
+        assert_eq!(result, Some("path LIKE 'lib/%' ESCAPE '\\' AND (path LIKE '%.py' ESCAPE '\\')".to_string()));
     }
 
     #[test]
     fn test_build_filter_expr_dot_prefix_stripped() {
         let exts = vec![".rs".to_string()];
         let result = build_filter_expr(None, Some(&exts));
-        assert_eq!(result, Some("(path LIKE '%.rs')".to_string()));
+        assert_eq!(result, Some("(path LIKE '%.rs' ESCAPE '\\')".to_string()));
     }
 
     #[test]
     fn test_build_filter_expr_empty_extensions() {
         let exts: Vec<String> = vec![];
         assert_eq!(build_filter_expr(None, Some(&exts)), None);
+    }
+
+    #[test]
+    fn test_build_filter_expr_underscore_escaped() {
+        let result = build_filter_expr(Some("src/my_module"), None);
+        assert_eq!(result, Some("path LIKE 'src/my\\_module%' ESCAPE '\\'".to_string()));
+    }
+
+    #[test]
+    fn test_build_filter_expr_percent_escaped() {
+        let result = build_filter_expr(Some("100%done"), None);
+        assert_eq!(result, Some("path LIKE '100\\%done%' ESCAPE '\\'".to_string()));
     }
 }

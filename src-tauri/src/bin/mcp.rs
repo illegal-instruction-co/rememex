@@ -80,6 +80,24 @@ struct IndexStatusParams {
     container: Option<String>,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+struct DiffParams {
+    #[schemars(description = "Time window like '2h', '30m', '1d', '7d'. Finds files changed within this period.")]
+    since: String,
+    container: Option<String>,
+    #[schemars(description = "Show git-style unified diff for each changed file (default true)")]
+    show_diff: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RelatedParams {
+    #[schemars(description = "Absolute path to the file. Finds semantically similar files via vector proximity.")]
+    path: String,
+    container: Option<String>,
+    #[schemars(description = "Number of related files to return (default 10, max 30)")]
+    top_k: Option<usize>,
+}
+
 fn is_path_within_container(file_path: &Path, config: &Config, container_name: &str) -> bool {
     let canonical = match std::fs::canonicalize(file_path) {
         Ok(p) => p,
@@ -95,6 +113,24 @@ fn is_path_within_container(file_path: &Path, config: &Config, container_name: &
         }
     }
     false
+}
+
+fn parse_duration(s: &str) -> Option<u64> {
+    let s = s.trim().to_lowercase();
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('s') {
+        (n, 1u64)
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, 60)
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, 3600)
+    } else if let Some(n) = s.strip_suffix('d') {
+        (n, 86400)
+    } else if let Some(n) = s.strip_suffix('w') {
+        (n, 604800)
+    } else {
+        return None;
+    };
+    num_str.trim().parse::<u64>().ok().map(|n| n * multiplier)
 }
 
 #[tool_router]
@@ -495,6 +531,265 @@ impl RecallServer {
     }
 
     #[tool(
+        description = "Find files that changed recently. Returns paths, timestamps, and optionally git-style diffs. Use at conversation start to understand what's been modified."
+    )]
+    async fn recall_diff(
+        &self,
+        Parameters(DiffParams { since, container, show_diff }): Parameters<DiffParams>,
+    ) -> Result<CallToolResult, McpError> {
+        use arrow_array::{Int64Array, StringArray};
+        use futures::TryStreamExt;
+        use lancedb::query::{ExecutableQuery, QueryBase};
+
+        let container =
+            container.unwrap_or_else(|| self.state.config.active_container.clone());
+        let table_name = get_table_name(&container);
+        let show_diff = show_diff.unwrap_or(true);
+
+        let seconds = parse_duration(&since).ok_or_else(|| {
+            McpError::invalid_params(format!("invalid duration '{}'. use format like '2h', '30m', '1d'", since), None)
+        })?;
+
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+            - seconds as i64;
+
+        let table = match self.state.db.open_table(&table_name).execute().await {
+            Ok(t) => t,
+            Err(_) => {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    format!("no index found for container '{}'.", container),
+                )]));
+            }
+        };
+
+        let results = table
+            .query()
+            .only_if(format!("mtime >= {}", cutoff))
+            .select(lancedb::query::Select::Columns(vec!["path".to_string(), "mtime".to_string()]))
+            .execute()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut file_mtimes: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let mtime_array = batch
+                .column_by_name("mtime")
+                .and_then(|c| c.as_any().downcast_ref::<Int64Array>());
+            if let (Some(paths), Some(mtimes)) = (path_array, mtime_array) {
+                for i in 0..batch.num_rows() {
+                    let path = paths.value(i).to_string();
+                    let mtime = mtimes.value(i);
+                    file_mtimes
+                        .entry(path)
+                        .and_modify(|existing| {
+                            if mtime > *existing {
+                                *existing = mtime;
+                            }
+                        })
+                        .or_insert(mtime);
+                }
+            }
+        }
+
+        if file_mtimes.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                format!("no files changed in the last {}.", since),
+            )]));
+        }
+
+        let mut changed_files: Vec<serde_json::Value> = Vec::new();
+        for (path, mtime) in &file_mtimes {
+            let mut entry = serde_json::json!({
+                "path": path,
+                "modified_unix": mtime,
+            });
+
+            if show_diff {
+                let file_path = PathBuf::from(path);
+                if file_path.is_file() {
+                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                        let preview: String = content.lines().take(50).collect::<Vec<_>>().join("\n");
+                        let total_lines = content.lines().count();
+                        entry["preview"] = serde_json::json!(preview);
+                        entry["total_lines"] = serde_json::json!(total_lines);
+                    }
+                } else {
+                    entry["status"] = serde_json::json!("deleted");
+                }
+            }
+
+            changed_files.push(entry);
+        }
+
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "since": since,
+            "total_changed": changed_files.len(),
+            "files": changed_files,
+        }))
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Find files semantically related to a given file. Uses vector proximity in the embedding space -- finds files with similar meaning, not just similar names."
+    )]
+    async fn recall_related(
+        &self,
+        Parameters(RelatedParams { path, container, top_k }): Parameters<RelatedParams>,
+    ) -> Result<CallToolResult, McpError> {
+        use arrow_array::{Float32Array, StringArray};
+        use futures::TryStreamExt;
+        use lancedb::query::{ExecutableQuery, QueryBase};
+
+        let container =
+            container.unwrap_or_else(|| self.state.config.active_container.clone());
+        let table_name = get_table_name(&container);
+        let top_k = top_k.unwrap_or(10).min(30).max(1);
+
+        let table = match self.state.db.open_table(&table_name).execute().await {
+            Ok(t) => t,
+            Err(_) => {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    format!("no index found for container '{}'.", container),
+                )]));
+            }
+        };
+
+        let safe_path = path.replace('\'', "''");
+        let chunks = table
+            .query()
+            .only_if(format!("path = '{}'", safe_path))
+            .execute()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut avg_vector: Option<Vec<f32>> = None;
+        let mut chunk_count = 0usize;
+
+        for batch in &chunks {
+            if let Some(vector_col) = batch.column_by_name("vector") {
+                use arrow_array::FixedSizeListArray;
+                if let Some(fsl) = vector_col.as_any().downcast_ref::<FixedSizeListArray>() {
+                    for i in 0..batch.num_rows() {
+                        let values = fsl.value(i);
+                        if let Some(float_arr) = values.as_any().downcast_ref::<Float32Array>() {
+                            let vec: Vec<f32> = (0..float_arr.len()).map(|j| float_arr.value(j)).collect();
+                            match &mut avg_vector {
+                                Some(avg) => {
+                                    for (k, v) in avg.iter_mut().enumerate() {
+                                        *v += vec[k];
+                                    }
+                                }
+                                None => avg_vector = Some(vec),
+                            }
+                            chunk_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let query_vector = match avg_vector {
+            Some(mut avg) if chunk_count > 0 => {
+                for v in avg.iter_mut() {
+                    *v /= chunk_count as f32;
+                }
+                avg
+            }
+            _ => {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    format!("file '{}' not found in index. make sure it's been indexed.", path),
+                )]));
+            }
+        };
+
+        let search_limit = (top_k + 1) * 3;
+        let vq = table
+            .vector_search(query_vector.as_slice())
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let results = vq
+            .distance_type(lancedb::DistanceType::Cosine)
+            .select(lancedb::query::Select::Columns(vec!["path".to_string(), "content".to_string()]))
+            .limit(search_limit)
+            .execute()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let mut best_per_file: std::collections::HashMap<String, (String, f32)> = std::collections::HashMap::new();
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let content_array = batch
+                .column_by_name("content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let dist_array = batch
+                .column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
+            if let (Some(paths), Some(contents), Some(dists)) = (path_array, content_array, dist_array) {
+                for i in 0..batch.num_rows() {
+                    let p = paths.value(i).to_string();
+                    if p == path {
+                        continue;
+                    }
+                    let dist = dists.value(i);
+                    match best_per_file.get(&p) {
+                        Some((_, existing_dist)) if *existing_dist <= dist => {}
+                        _ => {
+                            best_per_file.insert(p, (contents.value(i).to_string(), dist));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut related: Vec<(String, String, f32)> = best_per_file
+            .into_iter()
+            .map(|(p, (snippet, dist))| (p, snippet, dist))
+            .collect();
+        related.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        related.truncate(top_k);
+
+        let items: Vec<serde_json::Value> = related
+            .into_iter()
+            .map(|(p, snippet, dist)| {
+                let similarity = ((1.0 - dist).clamp(0.0, 1.0) * 100.0) as u32;
+                serde_json::json!({
+                    "path": p,
+                    "snippet": snippet,
+                    "similarity": similarity,
+                })
+            })
+            .collect();
+
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "source": path,
+            "total_related": items.len(),
+            "related_files": items,
+        }))
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
         description = "List all search containers (collections of indexed folders) with their names, descriptions, and indexed paths."
     )]
     async fn recall_list_containers(
@@ -538,6 +833,8 @@ impl ServerHandler for RecallServer {
                  Use recall_read_file to read file content by path (with optional line range). \
                  Use recall_list_files to browse indexed file paths. \
                  Use recall_index_status to check index health and stats. \
+                 Use recall_diff to see what files changed recently (e.g. '2h', '1d'). Start conversations with this. \
+                 Use recall_related to find semantically similar files to a given file path. \
                  Use recall_list_containers to see available search scopes."
                     .into(),
             ),

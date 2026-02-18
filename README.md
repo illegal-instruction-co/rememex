@@ -65,11 +65,13 @@ logs: `%AppData%\com.recall-lite.app\recall.log`
 
 one exe. plug it into cursor, claude desktop, copilot, windsurf, whatever. your AI gets full access to your local codebase without cloud APIs.
 
-5 tools, zero round-trips:
+7 tools, zero round-trips:
 - **`recall_search`** -- semantic + keyword hybrid search with filtering (`top_k`, `file_extensions`, `path_prefix`, `context_bytes`)
 - **`recall_read_file`** -- agent reads file content directly (with line ranges). find → read in one session
 - **`recall_list_files`** -- browse indexed file tree with filters
 - **`recall_index_status`** -- check if index is fresh before searching
+- **`recall_diff`** -- what changed recently? instant context at conversation start
+- **`recall_related`** -- find semantically similar files via vector proximity
 - **`recall_list_containers`** -- list available search scopes
 
 setup & config → [MCP.md](MCP.md)
