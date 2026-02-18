@@ -135,14 +135,14 @@ pub async fn search(
 
     let query_variants = indexer::expand_query(&query);
 
-    let vector_fut = indexer::search_files(&db, &table_name, &query_vector, 50);
+    let vector_fut = indexer::search_files(&db, &table_name, &query_vector, 50, None, None, false);
 
     let fts_db = db.clone();
     let fts_table_name = table_name.clone();
     let fts_fut = async move {
         let futs: Vec<_> = query_variants
             .iter()
-            .map(|variant| indexer::search_fts(&fts_db, &fts_table_name, variant, 30))
+            .map(|variant| indexer::search_fts(&fts_db, &fts_table_name, variant, 30, None, None, false))
             .collect();
         let results = futures::future::join_all(futs).await;
         let mut all_fts: Vec<(String, String)> = Vec::new();

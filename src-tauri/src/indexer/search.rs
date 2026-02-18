@@ -8,11 +8,45 @@ use lancedb::index::scalar::FullTextSearchQuery;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::DistanceType;
 
+pub fn build_filter_expr(
+    path_prefix: Option<&str>,
+    file_extensions: Option<&[String]>,
+) -> Option<String> {
+    let mut clauses = Vec::new();
+
+    if let Some(prefix) = path_prefix {
+        let escaped = prefix.replace('\'', "''").replace('\\', "\\\\");
+        clauses.push(format!("path LIKE '{}%'", escaped));
+    }
+
+    if let Some(exts) = file_extensions {
+        if !exts.is_empty() {
+            let ext_clauses: Vec<String> = exts
+                .iter()
+                .map(|ext| {
+                    let clean = ext.trim_start_matches('.').replace('\'', "''");
+                    format!("path LIKE '%.{}'", clean)
+                })
+                .collect();
+            clauses.push(format!("({})", ext_clauses.join(" OR ")));
+        }
+    }
+
+    if clauses.is_empty() {
+        None
+    } else {
+        Some(clauses.join(" AND "))
+    }
+}
+
 pub async fn search_files(
     db: &Connection,
     table_name: &str,
     query_vector: &[f32],
     limit: usize,
+    path_prefix: Option<&str>,
+    file_extensions: Option<&[String]>,
+    multi_chunk: bool,
 ) -> Result<Vec<(String, String, f32)>> {
     let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
@@ -31,59 +65,98 @@ pub async fn search_files(
         }
     }
 
-    let search_limit = limit * 2;
+    let search_limit = if multi_chunk { limit * 3 } else { limit * 2 };
 
-    let results = table
+    let mut query = table
         .vector_search(query_vector)?
         .distance_type(DistanceType::Cosine)
         .select(lancedb::query::Select::Columns(vec!["path".to_string(), "content".to_string()]))
-        .limit(search_limit)
+        .limit(search_limit);
+
+    if let Some(filter) = build_filter_expr(path_prefix, file_extensions) {
+        query = query.only_if(filter);
+    }
+
+    let results = query
         .execute()
         .await?
         .try_collect::<Vec<_>>()
         .await?;
 
-    let mut best_per_file: HashMap<String, (String, f32)> = HashMap::new();
+    if multi_chunk {
+        let mut matches = Vec::new();
 
-    for batch in results {
-        let path_array = batch
-            .column_by_name("path")
-            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
-            .ok_or_else(|| anyhow!("Missing or invalid 'path' column"))?;
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| anyhow!("Missing or invalid 'path' column"))?;
 
-        let content_array = batch
-            .column_by_name("content")
-            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
-            .ok_or_else(|| anyhow!("Missing or invalid 'content' column"))?;
+            let content_array = batch
+                .column_by_name("content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| anyhow!("Missing or invalid 'content' column"))?;
 
-        let dist_array = batch
-            .column_by_name("_distance")
-            .and_then(|c| c.as_any().downcast_ref::<Float32Array>())
-            .ok_or_else(|| anyhow!("Missing or invalid '_distance' column"))?;
+            let dist_array = batch
+                .column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>())
+                .ok_or_else(|| anyhow!("Missing or invalid '_distance' column"))?;
 
-        for i in 0..batch.num_rows() {
-            let path = path_array.value(i).to_string();
-            let content = content_array.value(i).to_string();
-            let dist = dist_array.value(i);
+            for i in 0..batch.num_rows() {
+                matches.push((
+                    path_array.value(i).to_string(),
+                    content_array.value(i).to_string(),
+                    dist_array.value(i),
+                ));
+            }
+        }
 
-            match best_per_file.get(&path) {
-                Some((_, existing_dist)) if *existing_dist <= dist => {}
-                _ => {
-                    best_per_file.insert(path, (content, dist));
+        matches.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        matches.truncate(limit);
+        Ok(matches)
+    } else {
+        let mut best_per_file: HashMap<String, (String, f32)> = HashMap::new();
+
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| anyhow!("Missing or invalid 'path' column"))?;
+
+            let content_array = batch
+                .column_by_name("content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| anyhow!("Missing or invalid 'content' column"))?;
+
+            let dist_array = batch
+                .column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>())
+                .ok_or_else(|| anyhow!("Missing or invalid '_distance' column"))?;
+
+            for i in 0..batch.num_rows() {
+                let path = path_array.value(i).to_string();
+                let content = content_array.value(i).to_string();
+                let dist = dist_array.value(i);
+
+                match best_per_file.get(&path) {
+                    Some((_, existing_dist)) if *existing_dist <= dist => {}
+                    _ => {
+                        best_per_file.insert(path, (content, dist));
+                    }
                 }
             }
         }
+
+        let mut matches: Vec<(String, String, f32)> = best_per_file
+            .into_iter()
+            .map(|(path, (content, dist))| (path, content, dist))
+            .collect();
+
+        matches.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        matches.truncate(limit);
+
+        Ok(matches)
     }
-
-    let mut matches: Vec<(String, String, f32)> = best_per_file
-        .into_iter()
-        .map(|(path, (content, dist))| (path, content, dist))
-        .collect();
-
-    matches.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-    matches.truncate(limit);
-
-    Ok(matches)
 }
 
 pub async fn search_fts(
@@ -91,6 +164,9 @@ pub async fn search_fts(
     table_name: &str,
     query: &str,
     limit: usize,
+    path_prefix: Option<&str>,
+    file_extensions: Option<&[String]>,
+    multi_chunk: bool,
 ) -> Result<Vec<(String, String)>> {
     let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
@@ -98,34 +174,61 @@ pub async fn search_fts(
     };
 
     let fts_query = FullTextSearchQuery::new(query.to_string());
-    let results = table
+    let mut q = table
         .query()
         .full_text_search(fts_query)
-        .limit(limit)
+        .limit(limit);
+
+    if let Some(filter) = build_filter_expr(path_prefix, file_extensions) {
+        q = q.only_if(filter);
+    }
+
+    let results = q
         .execute()
         .await?
         .try_collect::<Vec<_>>()
         .await?;
 
     let mut matches = Vec::new();
-    let mut seen_paths = std::collections::HashSet::new();
 
-    for batch in results {
-        let path_array = batch
-            .column_by_name("path")
-            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-        let content_array = batch
-            .column_by_name("content")
-            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+    if multi_chunk {
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let content_array = batch
+                .column_by_name("content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
-        if let (Some(paths), Some(contents)) = (path_array, content_array) {
-            for i in 0..batch.num_rows() {
-                let path = paths.value(i).to_string();
-                if seen_paths.insert(path.clone()) {
-                    matches.push((path, contents.value(i).to_string()));
+            if let (Some(paths), Some(contents)) = (path_array, content_array) {
+                for i in 0..batch.num_rows() {
+                    matches.push((paths.value(i).to_string(), contents.value(i).to_string()));
+                    if matches.len() >= limit {
+                        return Ok(matches);
+                    }
                 }
-                if matches.len() >= limit {
-                    return Ok(matches);
+            }
+        }
+    } else {
+        let mut seen_paths = std::collections::HashSet::new();
+
+        for batch in results {
+            let path_array = batch
+                .column_by_name("path")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let content_array = batch
+                .column_by_name("content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
+            if let (Some(paths), Some(contents)) = (path_array, content_array) {
+                for i in 0..batch.num_rows() {
+                    let path = paths.value(i).to_string();
+                    if seen_paths.insert(path.clone()) {
+                        matches.push((path, contents.value(i).to_string()));
+                    }
+                    if matches.len() >= limit {
+                        return Ok(matches);
+                    }
                 }
             }
         }
@@ -183,5 +286,43 @@ mod tests {
         let merged = hybrid_merge(&vector, &fts, 10);
         assert_eq!(merged.len(), 3);
         assert_eq!(merged[0].0, "b.txt");
+    }
+
+    #[test]
+    fn test_build_filter_expr_none() {
+        assert_eq!(build_filter_expr(None, None), None);
+    }
+
+    #[test]
+    fn test_build_filter_expr_prefix_only() {
+        let result = build_filter_expr(Some("src/indexer"), None);
+        assert_eq!(result, Some("path LIKE 'src/indexer%'".to_string()));
+    }
+
+    #[test]
+    fn test_build_filter_expr_extensions_only() {
+        let exts = vec!["rs".to_string(), "ts".to_string()];
+        let result = build_filter_expr(None, Some(&exts));
+        assert_eq!(result, Some("(path LIKE '%.rs' OR path LIKE '%.ts')".to_string()));
+    }
+
+    #[test]
+    fn test_build_filter_expr_both() {
+        let exts = vec!["py".to_string()];
+        let result = build_filter_expr(Some("lib/"), Some(&exts));
+        assert_eq!(result, Some("path LIKE 'lib/%' AND (path LIKE '%.py')".to_string()));
+    }
+
+    #[test]
+    fn test_build_filter_expr_dot_prefix_stripped() {
+        let exts = vec![".rs".to_string()];
+        let result = build_filter_expr(None, Some(&exts));
+        assert_eq!(result, Some("(path LIKE '%.rs')".to_string()));
+    }
+
+    #[test]
+    fn test_build_filter_expr_empty_extensions() {
+        let exts: Vec<String> = vec![];
+        assert_eq!(build_filter_expr(None, Some(&exts)), None);
     }
 }

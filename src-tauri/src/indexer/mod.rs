@@ -21,7 +21,7 @@ use ignore::WalkBuilder;
 pub use chunking::expand_query;
 pub use db::reset_index;
 pub use embedding::{embed_query, load_model, load_reranker, rerank_results};
-pub use search::{hybrid_merge, search_files, search_fts};
+pub use search::{build_filter_expr, hybrid_merge, search_files, search_fts};
 
 const ANN_INDEX_THRESHOLD: usize = 256;
 const EMBED_BATCH_SIZE: usize = 256;

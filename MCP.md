@@ -6,8 +6,54 @@ plug it into cursor, claude desktop, copilot, whatever. your AI can now search y
 
 ## tools
 
-- **`recall_search(query, container?)`** -- full pipeline. vector search → keyword search → hybrid merge → JINA reranker. same quality as the GUI. returns paths, snippets, scores
-- **`recall_list_containers()`** -- dumps your containers. names, paths, which one's active
+### `recall_search`
+
+full pipeline. vector search → keyword search → hybrid merge → JINA reranker. same quality as the GUI. returns paths, snippets, scores.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `query` | string | required | what you're looking for |
+| `container` | string? | active | which container to search |
+| `top_k` | number? | 10 | results to return (max 50) |
+| `file_extensions` | string[]? | all | filter by extension, e.g. `["rs", "ts"]` |
+| `path_prefix` | string? | none | filter by path prefix, e.g. `"src/indexer"` |
+| `context_bytes` | number? | 1500 | snippet size in bytes (max 10000) |
+
+### `recall_read_file`
+
+agent finds a file via search → reads it without leaving MCP. no more round-trips.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `path` | string | required | absolute path to the file |
+| `start_line` | number? | 1 | start line (1-indexed, inclusive) |
+| `end_line` | number? | EOF | end line (1-indexed, inclusive) |
+
+security: only reads files inside indexed container paths. can't escape to random system files.
+
+### `recall_list_files`
+
+get the project structure instantly. returns deduplicated file list with sizes.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `container` | string? | active | which container |
+| `path_prefix` | string? | none | filter by path prefix |
+| `extensions` | string[]? | all | filter by extension |
+
+### `recall_index_status`
+
+agent checks if the index is fresh or empty before wasting time searching.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `container` | string? | active | which container |
+
+returns: `total_files`, `total_chunks`, `has_index`, `indexed_paths`, container metadata.
+
+### `recall_list_containers`
+
+dumps your containers. names, paths, descriptions, which one's active. no params.
 
 ## get the binary
 
@@ -96,6 +142,8 @@ first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weigh
 **server not showing up** -- check the exe path. absolute path. double backslashes on windows. yes it's annoying
 
 **searching wrong stuff** -- defaults to active container. pass `container: "Whatever"` to pick a different one
+
+**access denied on read_file** -- the file isn't inside any indexed container path. index the parent folder first
 
 ## privacy
 
