@@ -5,7 +5,7 @@ semantic search tool for humans and AI agents. you type meaning, it finds files.
 **windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/98407df3-1984-4f3d-9cd5-21cbfdc4cb85" width="700" />
+  <img src="https://github.com/user-attachments/assets/b11b0fc1-3a35-4854-8703-ff98f286a430" width="700" />
 </p>
 
 ## what it does
