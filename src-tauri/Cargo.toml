@@ -43,6 +43,7 @@ rmcp = { version = "0.15", features = ["server", "transport-io", "schemars"] }
 schemars = "0.8"
 notify-debouncer-full = "0.5"
 ignore = "0.4"
+git2 = "0.20"
 tauri-plugin-autostart = "2"
 
 [target.'cfg(windows)'.dependencies]

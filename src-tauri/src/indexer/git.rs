@@ -1,28 +1,51 @@
 use std::path::Path;
-use std::process::Command;
-
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
 pub fn get_commit_context(file_path: &Path) -> Option<String> {
-    let parent = file_path.parent()?;
+    let repo = git2::Repository::discover(file_path.parent()?).ok()?;
+    let workdir = repo.workdir()?;
+    let relative_path = file_path.strip_prefix(workdir).ok()?;
 
-    let mut cmd = Command::new("git");
-    cmd.args(["log", "--format=%s", "-n", "50", "--"])
-        .arg(file_path.file_name()?)
-        .current_dir(parent);
+    let mut revwalk = repo.revwalk().ok()?;
+    revwalk.push_head().ok()?;
+    revwalk.set_sorting(git2::Sort::TIME).ok()?;
 
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.pathspec(relative_path);
 
-    let output = cmd.output().ok()?;
+    let mut messages = Vec::new();
 
-    if !output.status.success() {
-        return None;
+    for oid in revwalk.flatten() {
+        if messages.len() >= 50 {
+            break;
+        }
+
+        let commit = match repo.find_commit(oid) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let tree = match commit.tree() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+        let diff =
+            match repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts)) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+        if diff.deltas().len() > 0 {
+            if let Some(msg) = commit.summary() {
+                let msg = msg.trim();
+                if !msg.is_empty() {
+                    messages.push(msg.to_string());
+                }
+            }
+        }
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let messages: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
 
     if messages.is_empty() {
         return None;
