@@ -137,9 +137,11 @@ we indexed it and ran these queries. all results below used the **most basic con
 | setting | value |
 |---------|-------|
 | embedding model | Multilingual-E5-Base (local ONNX, ~170MB) |
-| reranker | JINA Reranker v2 (local) |
-| chunk size | 800 bytes (default for PDFs) |
-| chunk overlap | 150 bytes |
+| reranker | off |
+| chunk size | 512 tokens, 64 overlap |
+| query router | on |
+| MMR diversity | on (~65% balance) |
+| HyDE | off |
 | embedding provider | local — zero API calls |
 
 real results, real scores:
