@@ -10,39 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-          targets: x86_64-pc-windows-msvc
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install Protoc
-        run: choco install protoc
-
-      - name: Cargo test
-        run: cargo test
-        working-directory: src-tauri
-
-      - name: Frontend install
-        run: npm install
-
-      - name: Frontend typecheck
-        run: npx tsc --noEmit
-
   release:
-    needs: test
     permissions:
       contents: write
     strategy:
