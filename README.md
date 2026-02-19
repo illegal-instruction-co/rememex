@@ -132,7 +132,17 @@ we ship a test dataset so you can see what semantic search actually feels like. 
 # wait for indexing (~30 min on local embeddings)
 ```
 
-we indexed it and ran these queries. real results, real scores:
+we indexed it and ran these queries. all results below used the **most basic config** — no cloud APIs, no fine-tuning:
+
+| setting | value |
+|---------|-------|
+| embedding model | Multilingual-E5-Base (local ONNX, ~170MB) |
+| reranker | JINA Reranker v2 (local) |
+| chunk size | 800 bytes (default for PDFs) |
+| chunk overlap | 150 bytes |
+| embedding provider | local — zero API calls |
+
+real results, real scores:
 
 | query | top result | score | why it's interesting |
 |-------|-----------|-------|---------------------|
