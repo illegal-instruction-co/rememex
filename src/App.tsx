@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import type { ListImperativeAPI } from "react-window";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -34,6 +34,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hotkey, setHotkey] = useState("Alt + Space");
   const [annotations, setAnnotations] = useState<{ id: string; path: string; note: string; source: string; created_at: number }[]>([]);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const modal = useModal();
   const { t } = useLocale();
 
@@ -189,6 +190,7 @@ function App() {
     setActiveContainer(name);
     setResults([]);
     setQuery("");
+    setSelectedAnnotationId(null);
     setStatus(t("status_switched", { name }));
     searchInputRef.current?.focus();
     try {
@@ -399,6 +401,7 @@ function App() {
   }
 
   const activeInfo = containers.find(c => c.name === activeContainer);
+  const selectedAnnotation = useMemo(() => annotations.find(a => a.id === selectedAnnotationId) ?? null, [annotations, selectedAnnotationId]);
 
   return (
     <>
@@ -417,6 +420,7 @@ function App() {
           onReindexAll={handleReindexAll}
           onOpenSettings={() => setSettingsOpen(true)}
           onDeleteAnnotation={handleDeleteAnnotation}
+          onSelectAnnotation={(id) => { setSelectedAnnotationId(id); setQuery(""); }}
         />
         <div className="main-content">
           <SearchBar
@@ -427,17 +431,41 @@ function App() {
             onPickFolder={handlePickFolder}
             inputRef={searchInputRef}
           />
-          <ResultsList
-            results={results}
-            selectedIndex={selectedIndex}
-            setSelectedIndex={setSelectedIndex}
-            activeContainer={activeContainer}
-            query={query}
-            onOpenFile={(p) => { handleOpenFile(p).catch(() => { }); }}
-            onAnnotate={(p) => { handleAnnotate(p).catch(() => { }); }}
-            listRef={listRef}
-            hotkey={hotkey}
-          />
+          {selectedAnnotation ? (
+            <div className="annotation-detail-view">
+              <div className="annotation-detail-header">
+                <button type="button" className="annotation-detail-close" onClick={() => setSelectedAnnotationId(null)}>✕</button>
+                <span className="annotation-detail-path" title={selectedAnnotation.path}>{selectedAnnotation.path}</span>
+                <span className={`annotation-source-badge ${selectedAnnotation.source}`}>
+                  {selectedAnnotation.source === 'agent' ? '🤖' : '👤'}
+                </span>
+              </div>
+              <div className="annotation-detail-meta">
+                {new Date(selectedAnnotation.created_at * 1000).toLocaleString()}
+              </div>
+              <div className="annotation-detail-note">{selectedAnnotation.note}</div>
+              <div className="annotation-detail-actions">
+                <button type="button" className="annotation-detail-open" onClick={() => handleOpenFile(selectedAnnotation.path)}>
+                  Open File
+                </button>
+                <button type="button" className="annotation-detail-delete" onClick={() => { handleDeleteAnnotation(selectedAnnotation.id); setSelectedAnnotationId(null); }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ResultsList
+              results={results}
+              selectedIndex={selectedIndex}
+              setSelectedIndex={setSelectedIndex}
+              activeContainer={activeContainer}
+              query={query}
+              onOpenFile={(p) => { handleOpenFile(p).catch(() => { }); }}
+              onAnnotate={(p) => { handleAnnotate(p).catch(() => { }); }}
+              listRef={listRef}
+              hotkey={hotkey}
+            />
+          )}
           <StatusBar
             status={status}
             isIndexing={isIndexing}

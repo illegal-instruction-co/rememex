@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <em>named after Vannevar Bush's <a href="https://en.wikipedia.org/wiki/Memex">Memex</a> (1945) — a vision of a device that stores and retrieves all human knowledge.</em>
+  <em>named after Vannevar Bush's <a href="https://en.wikipedia.org/wiki/Memex">Memex</a> (1945), a vision of a device that stores and retrieves all human knowledge.</em>
 </p>
 
 ---
@@ -56,6 +56,7 @@
 - smart chunking per language (rust at `fn`/`struct`, python at `def`/`class`, etc)
 - semantic containers for isolation (work/personal/research)
 - MCP server for AI agents. [details →](MCP.md) · [agent instructions →](AGENT.md)
+- annotations: attach searchable notes to any file, from the UI or via MCP. agents and humans share the same knowledge layer
 - optional cloud embeddings -- plug in OpenAI, Gemini, Cohere, or any compatible API. default is still 100% local
 
 ---

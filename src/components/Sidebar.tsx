@@ -1,6 +1,6 @@
 import {
     Box, Plus, Trash2, FolderOpen, Folder, RefreshCw,
-    PanelLeftClose, PanelLeftOpen, Globe, MessageSquarePlus, Trash, ChevronDown, ChevronRight, Search,
+    PanelLeftClose, PanelLeftOpen, Globe, MessageSquarePlus, ChevronDown, ChevronRight, Search,
 } from "lucide-react";
 import { SettingsButton } from "./Settings";
 import type { ContainerItem } from "../types";
@@ -33,12 +33,13 @@ interface SidebarProps {
     onReindexAll: () => void;
     onOpenSettings: () => void;
     onDeleteAnnotation: (id: string) => void;
+    onSelectAnnotation: (id: string) => void;
 }
 
 export default function Sidebar({
     containers, activeContainer, isIndexing, sidebarOpen, annotations,
     onToggleSidebar, onSwitchContainer, onCreateContainer,
-    onDeleteContainer, onReindexAll, onOpenSettings, onDeleteAnnotation,
+    onDeleteContainer, onReindexAll, onOpenSettings, onDeleteAnnotation: _onDeleteAnnotation, onSelectAnnotation,
 }: Readonly<SidebarProps>) {
     const { t, locale, setLocale, availableLocales } = useLocale();
     const [annotationsOpen, setAnnotationsOpen] = useState(false);
@@ -191,7 +192,12 @@ export default function Sidebar({
                                     ) : (
                                         <>
                                             {filteredAnnotations.slice(0, annotationLimit).map(a => (
-                                                <div key={a.id} className="annotation-item">
+                                                <button
+                                                    key={a.id}
+                                                    type="button"
+                                                    className="annotation-item"
+                                                    onClick={() => onSelectAnnotation(a.id)}
+                                                >
                                                     <div className="annotation-item-content">
                                                         <div className="annotation-item-header">
                                                             <span className="annotation-item-path" title={a.path}>
@@ -203,15 +209,7 @@ export default function Sidebar({
                                                         </div>
                                                         <span className="annotation-item-note">{a.note}</span>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        className="annotation-item-delete"
-                                                        onClick={() => onDeleteAnnotation(a.id)}
-                                                        title={t('annotation_delete')}
-                                                    >
-                                                        <Trash size={10} />
-                                                    </button>
-                                                </div>
+                                                </button>
                                             ))}
                                             {filteredAnnotations.length > annotationLimit && (
                                                 <button
