@@ -8,6 +8,7 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tokio::sync::Mutex;
 
 use crate::indexer::embedding_provider::RemoteProviderConfig;
+use crate::indexer::hyde::HydeConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
@@ -99,6 +100,14 @@ pub struct Config {
     pub first_run: bool,
     #[serde(default = "default_true")]
     pub use_reranker: bool,
+    #[serde(default)]
+    pub hyde: Option<HydeConfig>,
+    #[serde(default = "default_true")]
+    pub query_router_enabled: bool,
+    #[serde(default = "default_true")]
+    pub mmr_enabled: bool,
+    #[serde(default = "default_mmr_lambda")]
+    pub mmr_lambda: f32,
 }
 
 fn default_schema() -> String {
@@ -111,6 +120,10 @@ fn default_hotkey() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_mmr_lambda() -> f32 {
+    0.7
 }
 
 impl Default for Config {
@@ -133,6 +146,10 @@ impl Default for Config {
             active_container: "Default".to_string(),
             first_run: true,
             use_reranker: true,
+            hyde: None,
+            query_router_enabled: true,
+            mmr_enabled: true,
+            mmr_lambda: 0.7,
         }
     }
 }
@@ -334,6 +351,10 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                     containers,
                     first_run: false,
                     use_reranker: true,
+                    hyde: None,
+                    query_router_enabled: true,
+                    mmr_enabled: true,
+                    mmr_lambda: 0.7,
                 }
             } else {
                 Config::default()
@@ -345,3 +366,65 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_serde_roundtrip() {
+        let mut config = Config::default();
+        config.query_router_enabled = false;
+        config.mmr_enabled = true;
+        config.mmr_lambda = 0.5;
+        config.hyde = Some(crate::indexer::hyde::HydeConfig {
+            enabled: true,
+            endpoint: "http://test:8080/v1/chat/completions".into(),
+            model: "test-model".into(),
+            api_key: Some("sk-test".into()),
+        });
+
+        let json = serde_json::to_string(&config).unwrap();
+        let restored: Config = serde_json::from_str(&json).unwrap();
+
+        assert!(!restored.query_router_enabled);
+        assert!(restored.mmr_enabled);
+        assert!((restored.mmr_lambda - 0.5).abs() < 0.01);
+        assert!(restored.hyde.is_some());
+        let hyde = restored.hyde.unwrap();
+        assert!(hyde.enabled);
+        assert_eq!(hyde.model, "test-model");
+        assert_eq!(hyde.api_key, Some("sk-test".into()));
+    }
+
+    #[test]
+    fn test_config_backward_compat() {
+        let minimal_json = r#"{
+            "embedding_model": "MultilingualE5Base",
+            "containers": { "Default": { "description": "", "indexed_paths": [] } },
+            "active_container": "Default"
+        }"#;
+        let config: Config = serde_json::from_str(minimal_json).unwrap();
+        assert!(config.query_router_enabled);
+        assert!(config.mmr_enabled);
+        assert!((config.mmr_lambda - 0.7).abs() < 0.01);
+        assert!(config.hyde.is_none());
+        assert!(config.use_reranker);
+    }
+
+    #[test]
+    fn test_hyde_config_serde() {
+        let hyde = crate::indexer::hyde::HydeConfig {
+            enabled: true,
+            endpoint: "http://localhost:11434/v1/chat/completions".into(),
+            model: "llama3.2".into(),
+            api_key: None,
+        };
+        let json = serde_json::to_string(&hyde).unwrap();
+        let restored: crate::indexer::hyde::HydeConfig = serde_json::from_str(&json).unwrap();
+        assert!(restored.enabled);
+        assert_eq!(restored.model, "llama3.2");
+        assert!(restored.api_key.is_none());
+    }
+}
+

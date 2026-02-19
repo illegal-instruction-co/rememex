@@ -251,15 +251,21 @@ on launch it:
 sequenceDiagram
     participant Editor as AI editor
     participant MCP as rememex-mcp
-    participant DB as lancedb
+    participant LLM as HyDE LLM
     participant Model as embedding model
+    participant DB as lancedb
 
     Editor->>MCP: JSON-RPC over stdio
-    MCP->>Model: embed query
+    MCP->>MCP: query router (classify query)
+    opt conceptual query + HyDE enabled
+        MCP->>LLM: generate hypothetical doc
+        LLM-->>MCP: hyde document
+    end
+    MCP->>Model: embed query (or hyde doc)
     Model-->>MCP: query vector
-    MCP->>DB: vector search + FTS
+    MCP->>DB: vector search + FTS + annotation search
     DB-->>MCP: raw results
-    MCP->>MCP: hybrid merge → rerank → score
+    MCP->>MCP: hybrid merge → annotation merge → rerank → score → MMR
     MCP-->>Editor: ranked results
 ```
 

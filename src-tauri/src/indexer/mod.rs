@@ -6,7 +6,9 @@ pub mod embedding_provider;
 pub mod file_io;
 pub mod git;
 pub mod ocr;
+pub mod hyde;
 pub mod pipeline;
+pub mod query_router;
 pub mod search;
 
 use std::sync::Arc;

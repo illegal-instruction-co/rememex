@@ -84,7 +84,11 @@ graph LR
 
 ```mermaid
 graph LR
-    Q[query] --> EMB[embed query]
+    Q[query] --> QR[query router]
+    QR -->|weights + hyde flag| HYDE{hyde?}
+    HYDE -->|conceptual| LLM[LLM hypothetical doc]
+    HYDE -->|other| EMB[embed query]
+    LLM --> EMB
     Q --> EXP[expand query variants]
     EMB --> VS[vector search]
     EXP --> FTS[full-text search]
@@ -95,7 +99,8 @@ graph LR
     HM --> AM
     AM --> RR[JINA reranker]
     RR --> SC[score normalization]
-    SC --> R[ranked results]
+    SC --> MMR[MMR diversity]
+    MMR --> R[ranked results]
 
     UI[tauri UI] --> Q
     MCP[MCP server] -->|stdio| Q

@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useLocale } from "../i18n";
 import GeneralSettings from "./settings/GeneralSettings";
 import IndexingSettings from "./settings/IndexingSettings";
+import SearchSettings from "./settings/SearchSettings";
 import "./Settings.css";
 
 interface AppConfig {
@@ -23,6 +24,13 @@ interface AppConfig {
     remote_dimensions: number;
     first_run: boolean;
     use_reranker: boolean;
+    hyde_enabled: boolean;
+    hyde_endpoint: string;
+    hyde_model: string;
+    hyde_api_key: string;
+    query_router_enabled: boolean;
+    mmr_enabled: boolean;
+    mmr_lambda: number;
 }
 
 interface SettingsProps {
@@ -99,6 +107,11 @@ export default function Settings({ open, onClose }: Readonly<SettingsProps>) {
                             setExcludedExtDraft={setExcludedExtDraft}
                             updateField={updateField}
                         />
+                    </div>
+
+                    <div className="settings-group">
+                        <div className="settings-section-title">{t("settings_section_search")}</div>
+                        <SearchSettings config={config} updateField={updateField} />
                     </div>
                 </div>
             </div>

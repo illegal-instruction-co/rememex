@@ -96,5 +96,20 @@
     "annotation_show_more": "{{count}} more...",
     "annotation_source_all": "All",
     "annotation_source_user": "User",
-    "annotation_source_agent": "Agent"
+    "annotation_source_agent": "Agent",
+    "settings_section_search": "Search Quality",
+    "settings_query_router": "Smart Query Routing",
+    "settings_query_router_desc": "Auto-detect query type and optimize search weights",
+    "settings_mmr": "Result Diversity",
+    "settings_mmr_desc": "Reduce duplicate results using Maximal Marginal Relevance",
+    "settings_mmr_lambda": "Diversity Balance",
+    "settings_mmr_lambda_desc": "0% = max diversity, 100% = max relevance",
+    "settings_hyde": "HyDE (AI-Enhanced Search)",
+    "settings_hyde_desc": "Generate hypothetical documents for better semantic matching",
+    "settings_hyde_endpoint": "LLM Endpoint",
+    "settings_hyde_endpoint_desc": "OpenAI-compatible chat completions URL",
+    "settings_hyde_model": "LLM Model",
+    "settings_hyde_model_desc": "Model for generating hypothetical documents",
+    "settings_hyde_api_key": "LLM API Key",
+    "settings_hyde_api_key_desc": "Leave empty if not required (e.g. Ollama)"
 }
