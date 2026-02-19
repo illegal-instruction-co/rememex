@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  semantic search tool for humans and AI agents. you type meaning, it finds files. nothing leaves your machine.
+  a semantic upgrade to your file system. you type meaning, it finds files. nothing leaves your machine.
 </p>
 
 <p align="center">
