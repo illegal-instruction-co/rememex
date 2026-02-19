@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/assets/logo.png" width="200" />
+  <img src="src/assets/rememex.png" width="200" />
 </p>
 
 <h1 align="center">Rememex</h1>
@@ -25,7 +25,7 @@
 **windows 10+ only** for now. uses UWP OCR and mica backdrop. 
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/b11b0fc1-3a35-4854-8703-ff98f286a430" width="700" />
+  <img src="assets/search.gif" width="700" />
 </p>
 
 ---
