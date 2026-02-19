@@ -185,10 +185,38 @@ impl RememexServer {
             )]));
         }
 
+        let query_weights = if self.state.config.query_router_enabled {
+            indexer::query_router::classify_and_weigh(&query)
+        } else {
+            debug!("mcp search: query_router disabled, using default weights");
+            indexer::query_router::QueryWeights { vector_weight: 1.0, fts_weight: 1.0, use_hyde: false }
+        };
+
+        debug!("mcp search: features: router={}, mmr={} (λ={:.2}), hyde={}",
+            self.state.config.query_router_enabled,
+            self.state.config.mmr_enabled,
+            self.state.config.mmr_lambda,
+            self.state.config.hyde.as_ref().map_or(false, |h| h.enabled));
+
         let query_vector = {
             let guard = self.state.provider.lock().await;
-            guard.embed_query(&query).await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+
+            let hyde_doc = indexer::hyde::maybe_generate(
+                self.state.config.hyde.as_ref(),
+                &query,
+                query_weights.use_hyde,
+            ).await;
+
+            if let Some(ref doc) = hyde_doc {
+                debug!("mcp search: using HyDE embedding for conceptual query");
+                let vecs = guard.embed_passages(vec![doc.clone()]).await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                vecs.into_iter().next()
+                    .ok_or_else(|| McpError::internal_error("HyDE embedding empty".to_string(), None))?
+            } else {
+                guard.embed_query(&query).await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            }
         };
 
         let search_limit = top_k * 3;
@@ -242,7 +270,12 @@ impl RememexServer {
             }
         };
 
-        let mut scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, top_k);
+        let scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, top_k * 2);
+        let mut scored = if self.state.config.mmr_enabled {
+            indexer::pipeline::mmr_select(scored, top_k, self.state.config.mmr_lambda)
+        } else {
+            scored.into_iter().take(top_k).collect()
+        };
         scored.retain(|item| item.score >= min_score.unwrap_or(0.0));
 
         for item in &mut scored {

@@ -61,6 +61,9 @@ windows = { version = "0.61", features = [
 ] }
 tauri-plugin-opener = "2.5.3"
 
+[dev-dependencies]
+wiremock = "0.6"
+
 [profile.release]
 opt-level = 3
 lto = true

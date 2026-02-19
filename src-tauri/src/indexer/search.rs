@@ -253,18 +253,20 @@ pub fn hybrid_merge(
     vector_results: &[(String, String, f32)],
     fts_results: &[(String, String)],
     limit: usize,
+    vector_weight: f32,
+    fts_weight: f32,
 ) -> Vec<(String, String, f32)> {
     let k = 60.0_f32;
 
     let mut rrf_scores: HashMap<String, (String, f32)> = HashMap::new();
 
     for (rank, (path, snippet, _)) in vector_results.iter().enumerate() {
-        let score = 1.0 / (k + rank as f32 + 1.0);
+        let score = vector_weight * (1.0 / (k + rank as f32 + 1.0));
         rrf_scores.insert(path.clone(), (snippet.clone(), score));
     }
 
     for (rank, (path, snippet)) in fts_results.iter().enumerate() {
-        let score = 1.0 / (k + rank as f32 + 1.0);
+        let score = fts_weight * (1.0 / (k + rank as f32 + 1.0));
         rrf_scores
             .entry(path.clone())
             .and_modify(|(_, s)| *s += score)
@@ -290,6 +292,7 @@ pub async fn search_pipeline(
     path_prefix: Option<&str>,
     file_extensions: Option<&[String]>,
 ) -> Result<(Vec<(String, String, f32)>, bool)> {
+    let weights = super::query_router::classify_and_weigh(query);
     let query_variants = super::chunking::expand_query(query);
 
     let vector_fut = search_files(db, table_name, query_vector, search_limit, path_prefix, file_extensions, false);
@@ -321,13 +324,14 @@ pub async fn search_pipeline(
     let (vector_result, fts_results) = tokio::join!(vector_fut, fts_fut);
     let vector_results = vector_result?;
 
-    debug!("Search pipeline: {} vector results, {} FTS results", vector_results.len(), fts_results.len());
+    debug!("Search pipeline: {} vector results, {} FTS results, router weights: vector={:.1} fts={:.1}",
+        vector_results.len(), fts_results.len(), weights.vector_weight, weights.fts_weight);
 
     let used_hybrid = !fts_results.is_empty();
     let merged = if fts_results.is_empty() {
         vector_results
     } else {
-        hybrid_merge(&vector_results, &fts_results, search_limit)
+        hybrid_merge(&vector_results, &fts_results, search_limit, weights.vector_weight, weights.fts_weight)
     };
 
     Ok((merged, used_hybrid))
@@ -347,7 +351,7 @@ mod tests {
             ("b.txt".to_string(), "world".to_string()),
             ("c.txt".to_string(), "new".to_string()),
         ];
-        let merged = hybrid_merge(&vector, &fts, 10);
+        let merged = hybrid_merge(&vector, &fts, 10, 1.0, 1.0);
         assert_eq!(merged.len(), 3);
         assert_eq!(merged[0].0, "b.txt");
     }
@@ -401,4 +405,51 @@ mod tests {
         let result = build_filter_expr(Some("100%done"), None);
         assert_eq!(result, Some("path LIKE '100\\%done%' ESCAPE '\\'".to_string()));
     }
+
+    #[test]
+    fn test_hybrid_merge_vector_heavy() {
+        let vector = vec![
+            ("v.rs".into(), "vectorhit".into(), 0.1),
+        ];
+        let fts = vec![
+            ("f.rs".into(), "ftshit".into()),
+        ];
+        let merged = hybrid_merge(&vector, &fts, 10, 1.5, 0.5);
+        assert_eq!(merged[0].0, "v.rs", "vector-heavy weights should rank vector first");
+    }
+
+    #[test]
+    fn test_hybrid_merge_fts_heavy() {
+        let vector = vec![
+            ("v.rs".into(), "vectorhit".into(), 0.1),
+        ];
+        let fts = vec![
+            ("f.rs".into(), "ftshit".into()),
+        ];
+        let merged = hybrid_merge(&vector, &fts, 10, 0.3, 1.7);
+        assert_eq!(merged[0].0, "f.rs", "fts-heavy weights should rank fts first");
+    }
+
+    #[test]
+    fn test_hybrid_merge_empty_inputs() {
+        let empty_vec: Vec<(String, String, f32)> = vec![];
+        let empty_fts: Vec<(String, String)> = vec![];
+        let merged = hybrid_merge(&empty_vec, &empty_fts, 10, 1.0, 1.0);
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn test_hybrid_merge_overlap_score_boosted() {
+        let vector = vec![
+            ("shared.rs".into(), "content".into(), 0.1),
+        ];
+        let fts = vec![
+            ("shared.rs".into(), "content".into()),
+            ("fts_only.rs".into(), "other".into()),
+        ];
+        let merged = hybrid_merge(&vector, &fts, 10, 1.0, 1.0);
+        assert_eq!(merged[0].0, "shared.rs", "item in both sources should rank highest");
+        assert!(merged[0].2 > merged[1].2, "shared score should be higher than fts-only");
+    }
 }
+

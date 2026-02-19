@@ -211,17 +211,50 @@ pub async fn search(
         get_table_name(&config.active_container)
     };
 
+    let (hyde_config, query_router_enabled, mmr_enabled, mmr_lambda) = {
+        let config = config_state.config.lock().await;
+        (config.hyde.clone(), config.query_router_enabled, config.mmr_enabled, config.mmr_lambda)
+    };
+
+    let query_weights = if query_router_enabled {
+        indexer::query_router::classify_and_weigh(&query)
+    } else {
+        debug!("search: query_router disabled, using default weights");
+        indexer::query_router::QueryWeights { vector_weight: 1.0, fts_weight: 1.0, use_hyde: false }
+    };
+
+    debug!("search: features: router={}, mmr={} (λ={:.2}), hyde={}",
+        query_router_enabled, mmr_enabled, mmr_lambda,
+        hyde_config.as_ref().map_or(false, |h| h.enabled));
+
     let query_vector = {
         let guard = provider_state.lock().await;
         if let Some(err) = &guard.init_error {
             return Err(format!("Embedding provider failed: {}", err));
         }
         let provider = guard.provider.as_ref().ok_or("Embedding provider is loading... Please wait a moment.")?;
-        provider.embed_query(&query).await
-            .map_err(|e| {
-                error!("Query embedding failed: {}", e);
-                e.to_string()
-            })?
+
+        let hyde_doc = indexer::hyde::maybe_generate(
+            hyde_config.as_ref(),
+            &query,
+            query_weights.use_hyde,
+        ).await;
+
+        if let Some(ref doc) = hyde_doc {
+            debug!("search: using HyDE embedding for conceptual query");
+            let vecs = provider.embed_passages(vec![doc.clone()]).await
+                .map_err(|e| {
+                    error!("HyDE passage embedding failed: {}", e);
+                    e.to_string()
+                })?;
+            vecs.into_iter().next().ok_or("HyDE embedding returned empty")?
+        } else {
+            provider.embed_query(&query).await
+                .map_err(|e| {
+                    error!("Query embedding failed: {}", e);
+                    e.to_string()
+                })?
+        }
     };
 
     let db = {
@@ -276,6 +309,11 @@ pub async fn search(
     };
 
     let scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, 20);
+    let scored = if mmr_enabled {
+        indexer::pipeline::mmr_select(scored, 10, mmr_lambda)
+    } else {
+        scored.into_iter().take(10).collect()
+    };
     debug!("search: {} results, hybrid={}, reranker={}", scored.len(), used_hybrid, used_reranker);
 
     Ok(scored
@@ -437,6 +475,13 @@ pub struct AppConfig {
     pub remote_dimensions: usize,
     pub first_run: bool,
     pub use_reranker: bool,
+    pub hyde_enabled: bool,
+    pub hyde_endpoint: String,
+    pub hyde_model: String,
+    pub hyde_api_key: String,
+    pub query_router_enabled: bool,
+    pub mmr_enabled: bool,
+    pub mmr_lambda: f32,
 }
 
 #[tauri::command]
@@ -478,6 +523,13 @@ pub async fn get_config(
         remote_dimensions,
         first_run: config.first_run,
         use_reranker: config.use_reranker,
+        hyde_enabled: config.hyde.as_ref().map_or(false, |h| h.enabled),
+        hyde_endpoint: config.hyde.as_ref().map_or(String::new(), |h| h.endpoint.clone()),
+        hyde_model: config.hyde.as_ref().map_or(String::new(), |h| h.model.clone()),
+        hyde_api_key: config.hyde.as_ref().and_then(|h| h.api_key.clone()).unwrap_or_default(),
+        query_router_enabled: config.query_router_enabled,
+        mmr_enabled: config.mmr_enabled,
+        mmr_lambda: config.mmr_lambda,
     })
 }
 
@@ -499,6 +551,13 @@ pub struct ConfigUpdate {
     pub remote_dimensions: Option<usize>,
     pub first_run: Option<bool>,
     pub use_reranker: Option<bool>,
+    pub hyde_enabled: Option<bool>,
+    pub hyde_endpoint: Option<String>,
+    pub hyde_model: Option<String>,
+    pub hyde_api_key: Option<String>,
+    pub query_router_enabled: Option<bool>,
+    pub mmr_enabled: Option<bool>,
+    pub mmr_lambda: Option<f32>,
 }
 
 #[tauri::command]
@@ -611,6 +670,32 @@ pub async fn update_config(
 
         if let Some(v) = updates.use_reranker {
             config.use_reranker = v;
+        }
+
+        if updates.hyde_enabled.is_some() || updates.hyde_endpoint.is_some() || updates.hyde_model.is_some() || updates.hyde_api_key.is_some() {
+            let mut hyde = config.hyde.clone().unwrap_or(indexer::hyde::HydeConfig {
+                enabled: false,
+                endpoint: String::new(),
+                model: String::new(),
+                api_key: None,
+            });
+            if let Some(v) = updates.hyde_enabled { hyde.enabled = v; }
+            if let Some(ref v) = updates.hyde_endpoint { hyde.endpoint = v.clone(); }
+            if let Some(ref v) = updates.hyde_model { hyde.model = v.clone(); }
+            if let Some(ref v) = updates.hyde_api_key {
+                hyde.api_key = if v.is_empty() { None } else { Some(v.clone()) };
+            }
+            config.hyde = Some(hyde);
+        }
+
+        if let Some(v) = updates.query_router_enabled {
+            config.query_router_enabled = v;
+        }
+        if let Some(v) = updates.mmr_enabled {
+            config.mmr_enabled = v;
+        }
+        if let Some(v) = updates.mmr_lambda {
+            config.mmr_lambda = v.clamp(0.0, 1.0);
         }
     }
 

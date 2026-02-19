@@ -96,5 +96,20 @@
     "annotation_show_more": "{{count}} daha...",
     "annotation_source_all": "Tümü",
     "annotation_source_user": "Kullanıcı",
-    "annotation_source_agent": "Agent"
+    "annotation_source_agent": "Agent",
+    "settings_section_search": "Arama Kalitesi",
+    "settings_query_router": "Akıllı Sorgu Yönlendirme",
+    "settings_query_router_desc": "Sorgu türünü otomatik algıla ve arama ağırlıklarını optimize et",
+    "settings_mmr": "Sonuç Çeşitliliği",
+    "settings_mmr_desc": "Maksimal Marjinal Alaka ile tekrarlanan sonuçları azalt",
+    "settings_mmr_lambda": "Çeşitlilik Dengesi",
+    "settings_mmr_lambda_desc": "0% = maksimum çeşitlilik, 100% = maksimum alaka",
+    "settings_hyde": "HyDE (AI Destekli Arama)",
+    "settings_hyde_desc": "Daha iyi anlamsal eşleşme için varsayımsal dokümanlar oluştur",
+    "settings_hyde_endpoint": "LLM Uç Noktası",
+    "settings_hyde_endpoint_desc": "OpenAI uyumlu chat completions URL",
+    "settings_hyde_model": "LLM Model",
+    "settings_hyde_model_desc": "Varsayımsal doküman oluşturma modeli",
+    "settings_hyde_api_key": "LLM API Anahtarı",
+    "settings_hyde_api_key_desc": "Gerekmiyorsa boş bırakın (ör. Ollama)"
 }
