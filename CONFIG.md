@@ -66,7 +66,7 @@ any OpenAI-compatible embedding API works (OpenAI, Gemini, Cohere, Ollama, local
 - **model** -- model name sent in the request body
 - **dimensions** -- output vector size. must match the model. wrong value = broken index
 
-set this from the Settings UI (local/remote toggle) or edit config.json by hand. restart required.
+the global provider is used as the default for new containers. each container picks its own provider (local or remote) during creation. you can also edit config.json by hand. restart required for global changes.
 
 ## hotkey
 
