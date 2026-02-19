@@ -19,7 +19,7 @@ export default function TitleBar() {
                 <button
                     type="button"
                     className="titlebar-btn titlebar-close"
-                    onClick={() => appWindow.hide()}
+                    onClick={() => appWindow.close()}
                     aria-label="Close"
                 >
                     <X size={10} />

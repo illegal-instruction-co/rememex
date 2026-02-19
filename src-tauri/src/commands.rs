@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::config::{get_table_name, ConfigState, EmbeddingProviderConfig};
 use crate::indexer;
+use crate::indexer::annotations;
 use crate::indexer::embedding_provider::RemoteProviderConfig;
 use crate::state::{
     ContainerListItem, DbState, IndexingProgress, ProviderState, RerankerState, SearchResult,
@@ -228,11 +229,18 @@ pub async fn search(
         guard.db.clone()
     };
 
-    let (merged, used_hybrid) = indexer::search_pipeline(
+    let (mut merged, used_hybrid) = indexer::search_pipeline(
         &db, &table_name, &query, &query_vector, 50, None, None,
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    if let Ok(ann_results) = annotations::search_annotations(&db, &table_name, &query_vector, 10).await {
+        for (path, note, dist) in ann_results {
+            merged.push((path, note, dist));
+        }
+        merged.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+    }
 
     let rerank_input: Vec<(String, String, f32)> = merged.into_iter().take(15).collect();
 
@@ -646,4 +654,63 @@ pub async fn update_config(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn add_annotation(
+    path: String,
+    note: String,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<annotations::Annotation, String> {
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    annotations::add_annotation(&db, &table_name, &provider_state, &path, &note, "user")
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_annotations(
+    path: Option<String>,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<Vec<annotations::Annotation>, String> {
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    annotations::get_annotations(&db, &table_name, path.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_annotation(
+    annotation_id: String,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    config_state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    let table_name = {
+        let config = config_state.config.lock().await;
+        get_table_name(&config.active_container)
+    };
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    annotations::delete_annotation(&db, &table_name, &annotation_id)
+        .await
+        .map_err(|e| e.to_string())
 }

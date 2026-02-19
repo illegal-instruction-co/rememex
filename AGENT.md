@@ -16,6 +16,8 @@ using rememex instead of grep chains is expected to reduce your token usage by 5
 | `rememex_index_status` | check if index exists and how many files/chunks it has |
 | `rememex_diff` | files changed in a time window (`30m`, `2h`, `1d`, `7d`) |
 | `rememex_related` | given a file, find semantically similar files |
+| `rememex_annotate` | attach a searchable note to a file (embedded, appears in search) |
+| `rememex_annotations` | list annotations for a file or entire container |
 | `rememex_list_containers` | list all search containers and their paths |
 
 ## startup sequence
@@ -176,6 +178,28 @@ rememex_list_containers()
 
 the `active` container is the default. pass `container: "notes"` to search a different one. don't assume there's only one.
 
+## annotations
+
+annotations let you attach searchable notes to files. they're embedded just like file content, so they show up in `rememex_search` results. annotations you create are tagged `source: "agent"` — the user can filter by source in the UI to see what agents added vs what they added themselves.
+
+use them to leave context that persists across conversations:
+
+```
+rememex_annotate(
+  path: "C:\\dev\\myproject\\src\\auth.rs",
+  note: "CVE-2024-1234 fixed here. Rate limiter on line 42 is critical — do not remove."
+)
+```
+
+next time anyone searches for "rate limiter" or "CVE fix", this file surfaces with the annotation context.
+
+check existing annotations before modifying critical files:
+
+```
+rememex_annotations(path: "C:\\dev\\myproject\\src\\auth.rs")
+→ [{ id: "ann_...", note: "CVE-2024-1234 fixed here...", source: "agent", created_at: 1708300000 }]
+```
+
 ## performance notes
 
 - first query after MCP server launch is slow (~3-5 sec) — embedding model loading
@@ -185,4 +209,4 @@ the `active` container is the default. pass `container: "notes"` to search a dif
 
 ## the philosophy
 
-grep finds strings. rememex finds meaning. if you catch yourself constructing 5 different grep queries trying to guess the right keyword, just describe what you're looking for in one rememex_search call. that's the whole point.
+grep finds strings. rememex finds meaning. annotations let you teach it what matters. if you catch yourself constructing 5 different grep queries trying to guess the right keyword, just describe what you're looking for in one rememex_search call. that's the whole point.

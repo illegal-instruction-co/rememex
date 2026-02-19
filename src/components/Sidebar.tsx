@@ -1,35 +1,64 @@
 import {
     Box, Plus, Trash2, FolderOpen, Folder, RefreshCw,
-    PanelLeftClose, PanelLeftOpen, Globe,
+    PanelLeftClose, PanelLeftOpen, Globe, MessageSquarePlus, Trash, ChevronDown, ChevronRight, Search,
 } from "lucide-react";
 import { SettingsButton } from "./Settings";
 import type { ContainerItem } from "../types";
 import { useLocale } from "../i18n";
+import { useState, useMemo } from "react";
 
 const localeLabels: Record<string, string> = {
     en: "English",
     tr: "Türkçe",
 };
 
+interface Annotation {
+    id: string;
+    path: string;
+    note: string;
+    source: string;
+    created_at: number;
+}
+
 interface SidebarProps {
     containers: ContainerItem[];
     activeContainer: string;
     isIndexing: boolean;
     sidebarOpen: boolean;
+    annotations: Annotation[];
     onToggleSidebar: () => void;
     onSwitchContainer: (name: string) => void;
     onCreateContainer: () => void;
     onDeleteContainer: () => void;
     onReindexAll: () => void;
     onOpenSettings: () => void;
+    onDeleteAnnotation: (id: string) => void;
 }
 
 export default function Sidebar({
-    containers, activeContainer, isIndexing, sidebarOpen,
+    containers, activeContainer, isIndexing, sidebarOpen, annotations,
     onToggleSidebar, onSwitchContainer, onCreateContainer,
-    onDeleteContainer, onReindexAll, onOpenSettings,
+    onDeleteContainer, onReindexAll, onOpenSettings, onDeleteAnnotation,
 }: Readonly<SidebarProps>) {
     const { t, locale, setLocale, availableLocales } = useLocale();
+    const [annotationsOpen, setAnnotationsOpen] = useState(false);
+    const [annotationFilter, setAnnotationFilter] = useState("");
+    const [annotationLimit, setAnnotationLimit] = useState(20);
+    const [sourceFilter, setSourceFilter] = useState<'all' | 'user' | 'agent'>('all');
+
+    const filteredAnnotations = useMemo(() => {
+        let list = annotations;
+        if (sourceFilter !== 'all') {
+            list = list.filter(a => a.source === sourceFilter);
+        }
+        if (annotationFilter.trim()) {
+            const q = annotationFilter.toLowerCase();
+            list = list.filter(a =>
+                a.path.toLowerCase().includes(q) || a.note.toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [annotations, annotationFilter, sourceFilter]);
 
     function cycleLocale() {
         const idx = availableLocales.indexOf(locale);
@@ -115,6 +144,90 @@ export default function Sidebar({
                             <Trash2 size={12} /> {t('sidebar_delete')}
                         </button>
                     )}
+                    <div className="annotations-section">
+                        <button
+                            type="button"
+                            className="annotations-toggle"
+                            onClick={() => setAnnotationsOpen(!annotationsOpen)}
+                        >
+                            {annotationsOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                            <MessageSquarePlus size={10} />
+                            <span>{t('sidebar_annotations')}</span>
+                            {annotations.length > 0 && (
+                                <span className="annotations-count">{annotations.length > 99 ? '99+' : annotations.length}</span>
+                            )}
+                        </button>
+                        {annotationsOpen && (
+                            <div className="annotations-panel">
+                                <div className="annotations-source-tabs">
+                                    {(['all', 'user', 'agent'] as const).map(tab => (
+                                        <button
+                                            key={tab}
+                                            type="button"
+                                            className={`annotations-tab ${sourceFilter === tab ? 'active' : ''}`}
+                                            onClick={() => { setSourceFilter(tab); setAnnotationLimit(20); }}
+                                        >
+                                            {t({ all: 'annotation_source_all', user: 'annotation_source_user', agent: 'annotation_source_agent' }[tab] as Parameters<typeof t>[0])}
+                                        </button>
+                                    ))}
+                                </div>
+                                {annotations.length > 3 && (
+                                    <div className="annotations-search">
+                                        <Search size={10} className="annotations-search-icon" />
+                                        <input
+                                            type="text"
+                                            className="annotations-search-input"
+                                            placeholder={t('annotation_filter')}
+                                            value={annotationFilter}
+                                            onChange={(e) => { setAnnotationFilter(e.target.value); setAnnotationLimit(20); }}
+                                        />
+                                    </div>
+                                )}
+                                <div className="annotations-list">
+                                    {filteredAnnotations.length === 0 ? (
+                                        <div className="annotations-empty">
+                                            {annotations.length === 0 ? t('sidebar_no_annotations') : t('annotation_no_match')}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {filteredAnnotations.slice(0, annotationLimit).map(a => (
+                                                <div key={a.id} className="annotation-item">
+                                                    <div className="annotation-item-content">
+                                                        <div className="annotation-item-header">
+                                                            <span className="annotation-item-path" title={a.path}>
+                                                                {a.path.split(/[\\/]/).pop()}
+                                                            </span>
+                                                            <span className={`annotation-source-badge ${a.source}`}>
+                                                                {a.source === 'agent' ? '🤖' : '👤'}
+                                                            </span>
+                                                        </div>
+                                                        <span className="annotation-item-note">{a.note}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="annotation-item-delete"
+                                                        onClick={() => onDeleteAnnotation(a.id)}
+                                                        title={t('annotation_delete')}
+                                                    >
+                                                        <Trash size={10} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {filteredAnnotations.length > annotationLimit && (
+                                                <button
+                                                    type="button"
+                                                    className="annotations-show-more"
+                                                    onClick={() => setAnnotationLimit(prev => prev + 20)}
+                                                >
+                                                    {t('annotation_show_more', { count: String(filteredAnnotations.length - annotationLimit) })}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <button className="locale-switcher" onClick={cycleLocale} title={localeLabels[locale] ?? locale}>
                         <Globe size={12} />
                         <span>{locale.toUpperCase()}</span>

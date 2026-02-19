@@ -33,6 +33,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hotkey, setHotkey] = useState("Alt + Space");
+  const [annotations, setAnnotations] = useState<{ id: string; path: string; note: string; source: string; created_at: number }[]>([]);
   const modal = useModal();
   const { t } = useLocale();
 
@@ -51,6 +52,19 @@ function App() {
       }
     }).catch(() => { });
   }, []);
+
+  async function fetchAnnotations() {
+    try {
+      const list = await invoke<{ id: string; path: string; note: string; source: string; created_at: number }[]>("get_annotations", { path: null });
+      setAnnotations(list);
+    } catch {
+      setAnnotations([]);
+    }
+  }
+
+  useEffect(() => {
+    fetchAnnotations();
+  }, [activeContainer]);
 
   async function fetchContainers() {
     try {
@@ -187,6 +201,9 @@ function App() {
   useEffect(() => {
     searchInputRef.current?.focus();
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
@@ -351,6 +368,36 @@ function App() {
     }
   }
 
+  async function handleAnnotate(path: string) {
+    const result = await modal.prompt({
+      title: t("annotation_add"),
+      icon: "info",
+      fields: [
+        { key: "note", label: t("annotation_placeholder"), placeholder: t("annotation_placeholder") },
+      ],
+      confirmText: t("annotation_save"),
+    });
+
+    if (!result.confirmed || !result.values?.note?.trim()) return;
+
+    try {
+      await invoke("add_annotation", { path, note: result.values.note.trim() });
+      setStatus(t("annotation_saved"));
+      fetchAnnotations();
+    } catch (e) {
+      await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: t("modal_ok") });
+    }
+  }
+
+  async function handleDeleteAnnotation(id: string) {
+    try {
+      await invoke("delete_annotation", { annotationId: id });
+      fetchAnnotations();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   const activeInfo = containers.find(c => c.name === activeContainer);
 
   return (
@@ -362,12 +409,14 @@ function App() {
           activeContainer={activeContainer}
           isIndexing={isIndexing}
           sidebarOpen={sidebarOpen}
+          annotations={annotations}
           onToggleSidebar={() => setSidebarOpen(prev => !prev)}
           onSwitchContainer={handleSwitchContainer}
           onCreateContainer={handleCreateContainer}
           onDeleteContainer={handleDeleteContainer}
           onReindexAll={handleReindexAll}
           onOpenSettings={() => setSettingsOpen(true)}
+          onDeleteAnnotation={handleDeleteAnnotation}
         />
         <div className="main-content">
           <SearchBar
@@ -385,6 +434,7 @@ function App() {
             activeContainer={activeContainer}
             query={query}
             onOpenFile={(p) => { handleOpenFile(p).catch(() => { }); }}
+            onAnnotate={(p) => { handleAnnotate(p).catch(() => { }); }}
             listRef={listRef}
             hotkey={hotkey}
           />

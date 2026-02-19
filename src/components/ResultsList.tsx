@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { List, type ListImperativeAPI } from "react-window";
 import {
-    FileText, FileCode, FileJson, Image as ImageIcon, File, Box,
+    FileText, FileCode, FileJson, Image as ImageIcon, File, Box, MessageSquarePlus,
 } from "lucide-react";
 import type { SearchResult } from "../types";
 import { useLocale } from "../i18n";
@@ -34,12 +34,14 @@ interface RowData {
     selectedIndex: number;
     setSelectedIndex: (index: number) => void;
     handleOpenFile: (path: string) => void;
+    handleAnnotate: (path: string) => void;
     noPreviewText: string;
 }
 
-const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpenFile, noPreviewText }: { index: number; style: React.CSSProperties } & RowData) => {
+const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpenFile, handleAnnotate, noPreviewText }: { index: number; style: React.CSSProperties } & RowData) => {
     const result = results[index];
     const isSelected = index === selectedIndex;
+    const isAnnotation = result.snippet?.startsWith("[annotation]");
 
     return (
         <div style={style} className="px-3">
@@ -51,19 +53,30 @@ const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpe
                 className="result-item w-full text-left flex items-start gap-3 cursor-default outline-none select-none group h-full"
             >
                 <div className="pt-0.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                    {getFileIcon(result.path)}
+                    {isAnnotation ? <MessageSquarePlus className="w-5 h-5 text-[--color-fill-accent-default]" /> : getFileIcon(result.path)}
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
                         <h4 className="text-body truncate leading-tight">
                             {getFileName(result.path)}
+                            {isAnnotation && <span className="annotation-badge">annotation</span>}
                         </h4>
-                        <span className={`text-[10px] font-sans px-1.5 rounded-full shrink-0 ${getScoreColor(result.score)} bg-opacity-20`}>
-                            {Math.round(result.score)}%
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button
+                                type="button"
+                                className="annotate-btn"
+                                title="Add annotation"
+                                onClick={(e) => { e.stopPropagation(); handleAnnotate(result.path); }}
+                            >
+                                <MessageSquarePlus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className={`text-[10px] font-sans px-1.5 rounded-full ${getScoreColor(result.score)} bg-opacity-20`}>
+                                {Math.round(result.score)}%
+                            </span>
+                        </div>
                     </div>
                     <div className="truncate text-caption mt-0.5 opacity-60">
-                        {result.snippet || <span className="italic opacity-50">{noPreviewText}</span>}
+                        {isAnnotation ? result.snippet.replace("[annotation] ", "") : (result.snippet || <span className="italic opacity-50">{noPreviewText}</span>)}
                     </div>
                     <div className="truncate text-[10px] opacity-40 mt-0.5 font-mono">
                         {result.path}
@@ -81,12 +94,13 @@ interface ResultsListProps {
     activeContainer: string;
     query: string;
     onOpenFile: (path: string) => void;
+    onAnnotate: (path: string) => void;
     listRef: React.RefObject<ListImperativeAPI | null>;
     hotkey: string;
 }
 
 export default function ResultsList({
-    results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, listRef, hotkey,
+    results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, onAnnotate, listRef, hotkey,
 }: Readonly<ResultsListProps>) {
     const { t } = useLocale();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -139,7 +153,7 @@ export default function ResultsList({
                     style={{ width: dims.width, height: dims.height }}
                     rowCount={results.length}
                     rowHeight={78}
-                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile: (p: string) => { onOpenFile(p); }, noPreviewText: t("results_no_preview") }}
+                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile: (p: string) => { onOpenFile(p); }, handleAnnotate: (p: string) => { onAnnotate(p); }, noPreviewText: t("results_no_preview") }}
                     className="result-list-virtualized"
                     rowComponent={Row}
                 />

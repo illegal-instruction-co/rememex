@@ -6,6 +6,10 @@ import { attachConsole } from "@tauri-apps/plugin-log";
 
 attachConsole();
 
+if (import.meta.env.PROD) {
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <LocaleProvider>

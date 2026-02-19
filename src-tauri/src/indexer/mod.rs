@@ -1,3 +1,4 @@
+pub mod annotations;
 pub mod chunking;
 pub mod db;
 pub mod embedding;

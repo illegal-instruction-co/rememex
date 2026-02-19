@@ -83,5 +83,18 @@
     "settings_remote_dimensions_desc": "Uzak modelden gelen vektör boyutları",
     "settings_provider_changed_warning": "Sağlayıcı değişti — mevcut veriler için yeniden başlatma ve indexleme gerekli",
     "settings_use_reranker": "Reranker",
-    "settings_use_reranker_desc": "Arama sonuçlarını küçük modellerde daha iyi sıralamak için yeniden sırala (~1GB RAM kullanır)"
+    "settings_use_reranker_desc": "Arama sonuçlarını küçük modellerde daha iyi sıralamak için yeniden sırala (~1GB RAM kullanır)",
+    "annotation_add": "Not Ekle",
+    "annotation_placeholder": "Not",
+    "annotation_save": "Kaydet",
+    "annotation_saved": "Not kaydedildi",
+    "annotation_delete": "Notu sil",
+    "sidebar_annotations": "Notlar",
+    "sidebar_no_annotations": "Henüz not yok",
+    "annotation_filter": "Notlarda ara...",
+    "annotation_no_match": "Eşleşen not yok",
+    "annotation_show_more": "{{count}} daha...",
+    "annotation_source_all": "Tümü",
+    "annotation_source_user": "Kullanıcı",
+    "annotation_source_agent": "Agent"
 }

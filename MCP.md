@@ -76,6 +76,29 @@ given a file, finds other files with similar meaning. uses vector proximity in e
 
 returns: related file paths with similarity scores and snippets.
 
+### `rememex_annotate`
+
+attach a searchable note to any file. the note gets embedded and shows up in future `rememex_search` results. use it to leave context, warnings, or breadcrumbs for yourself or other agents.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `path` | string | required | absolute path to the file |
+| `note` | string | required | annotation text (embedded & searchable) |
+| `container` | string? | active | which container |
+
+returns: the created annotation with `id`, `path`, `note`, `source` (always `"agent"` via MCP), `created_at`.
+
+### `rememex_annotations`
+
+list annotations. filter by file path, or dump everything in a container.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `path` | string? | none | filter to a specific file |
+| `container` | string? | active | which container |
+
+returns: array of `{ id, path, note, source, created_at }`. `source` is `"user"` (added from UI) or `"agent"` (added via MCP).
+
 ### `rememex_list_containers`
 
 dumps your containers. names, paths, descriptions, which one's active. no params.
