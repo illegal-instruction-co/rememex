@@ -106,8 +106,15 @@ struct AnnotateParams {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 struct AnnotationsParams {
-    #[schemars(description = "Optional file path. If provided, returns annotations for that file only. Otherwise returns all.")]
+    #[schemars(description = "Optional. Absolute file path to filter annotations for.")]
     path: Option<String>,
+    container: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct DeleteAnnotationParams {
+    #[schemars(description = "The annotation ID to delete (e.g. 'ann_...'). Get IDs from rememex_annotations.")]
+    annotation_id: String,
     container: Option<String>,
 }
 
@@ -877,6 +884,52 @@ impl RememexServer {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(
+        description = "Delete an agent-created annotation by ID. Only annotations with source 'agent' can be deleted via MCP -- user-created annotations are protected. Use rememex_annotations to get annotation IDs first."
+    )]
+    async fn rememex_delete_annotation(
+        &self,
+        Parameters(DeleteAnnotationParams { annotation_id, container }): Parameters<DeleteAnnotationParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let container_name = container
+            .as_deref()
+            .unwrap_or(&self.state.config.active_container);
+        let table_name = get_table_name(container_name);
+
+        let all = annotations::get_annotations(&self.state.db, &table_name, None)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let target = all.iter().find(|a| a.id == annotation_id);
+
+        let annotation = match target {
+            Some(a) => a,
+            None => {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    format!("annotation '{}' not found.", annotation_id),
+                )]));
+            }
+        };
+
+        if annotation.source != "agent" {
+            return Ok(CallToolResult::success(vec![Content::text(
+                format!("cannot delete annotation '{}': source is '{}', not 'agent'. only agent-created annotations can be deleted via MCP.", annotation_id, annotation.source),
+            )]));
+        }
+
+        annotations::delete_annotation(&self.state.db, &table_name, &annotation_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let result = serde_json::json!({
+            "deleted": true,
+            "id": annotation_id,
+            "path": annotation.path,
+            "note": annotation.note,
+        });
+        Ok(CallToolResult::success(vec![Content::text(result.to_string())]))
+    }
 }
 
 #[tool_handler]
@@ -899,6 +952,7 @@ impl ServerHandler for RememexServer {
                  Use rememex_related to find semantically similar files to a given file path. \
                  Use rememex_annotate to add searchable notes to files (they appear in future searches). \
                  Use rememex_annotations to list existing annotations. \
+                 Use rememex_delete_annotation to remove outdated agent-created annotations by ID (user annotations are protected). \
                  Use rememex_list_containers to see available search scopes."
                     .into(),
             ),

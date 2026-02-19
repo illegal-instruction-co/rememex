@@ -99,6 +99,17 @@ list annotations. filter by file path, or dump everything in a container.
 
 returns: array of `{ id, path, note, source, created_at }`. `source` is `"user"` (added from UI) or `"agent"` (added via MCP).
 
+### `rememex_delete_annotation`
+
+delete an annotation by ID. only agent-created annotations can be deleted via MCP -- user annotations are protected.
+
+| param | type | default | description |
+|-------|------|---------|-------------|
+| `annotation_id` | string | required | the annotation ID (e.g. `"ann_..."`) from `rememex_annotations` |
+| `container` | string? | active | which container |
+
+returns: `{ deleted: true, id, path, note }` on success. refuses if source is `"user"`.
+
 ### `rememex_list_containers`
 
 dumps your containers. names, paths, descriptions, which one's active. no params.

@@ -22,6 +22,7 @@ using rememex instead of grep chains is expected to reduce your token usage by 5
 | `rememex_related` | given a file, find semantically similar files |
 | `rememex_annotate` | attach a searchable note to a file (embedded, appears in search) |
 | `rememex_annotations` | list annotations for a file or entire container |
+| `rememex_delete_annotation` | delete an agent-created annotation by ID (user annotations are protected) |
 | `rememex_list_containers` | list all search containers and their paths |
 
 ## startup sequence
@@ -203,6 +204,15 @@ check existing annotations before modifying critical files:
 rememex_annotations(path: "C:\\dev\\myproject\\src\\auth.rs")
 → [{ id: "ann_...", note: "CVE-2024-1234 fixed here...", source: "agent", created_at: 1708300000 }]
 ```
+
+when a file changes and an annotation becomes stale, delete it:
+
+```
+rememex_delete_annotation(annotation_id: "ann_1708300000123456789")
+→ { deleted: true, id: "ann_...", path: "...", note: "..." }
+```
+
+only agent-created annotations can be deleted via MCP. user annotations are protected — if you try to delete one, you'll get a clear error.
 
 ## performance notes
 
