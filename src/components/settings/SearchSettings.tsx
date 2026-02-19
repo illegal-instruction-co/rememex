@@ -65,6 +65,7 @@ export default function SearchSettings({ config, updateField }: Readonly<Props>)
                             onChange={(e) =>
                                 updateField({ mmr_lambda: Number.parseInt(e.target.value) / 100 })
                             }
+                            aria-label={t("settings_mmr_lambda")}
                             title={`${Math.round(config.mmr_lambda * 100)}%`}
                         />
                     }

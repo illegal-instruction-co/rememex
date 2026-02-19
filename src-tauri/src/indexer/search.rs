@@ -283,6 +283,7 @@ pub fn hybrid_merge(
     merged
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn search_pipeline(
     db: &Connection,
     table_name: &str,
@@ -291,8 +292,9 @@ pub async fn search_pipeline(
     search_limit: usize,
     path_prefix: Option<&str>,
     file_extensions: Option<&[String]>,
+    vector_weight: f32,
+    fts_weight: f32,
 ) -> Result<(Vec<(String, String, f32)>, bool)> {
-    let weights = super::query_router::classify_and_weigh(query);
     let query_variants = super::chunking::expand_query(query);
 
     let vector_fut = search_files(db, table_name, query_vector, search_limit, path_prefix, file_extensions, false);
@@ -324,14 +326,14 @@ pub async fn search_pipeline(
     let (vector_result, fts_results) = tokio::join!(vector_fut, fts_fut);
     let vector_results = vector_result?;
 
-    debug!("Search pipeline: {} vector results, {} FTS results, router weights: vector={:.1} fts={:.1}",
-        vector_results.len(), fts_results.len(), weights.vector_weight, weights.fts_weight);
+    debug!("Search pipeline: {} vector results, {} FTS results, weights: vector={:.1} fts={:.1}",
+        vector_results.len(), fts_results.len(), vector_weight, fts_weight);
 
     let used_hybrid = !fts_results.is_empty();
     let merged = if fts_results.is_empty() {
         vector_results
     } else {
-        hybrid_merge(&vector_results, &fts_results, search_limit, weights.vector_weight, weights.fts_weight)
+        hybrid_merge(&vector_results, &fts_results, search_limit, vector_weight, fts_weight)
     };
 
     Ok((merged, used_hybrid))

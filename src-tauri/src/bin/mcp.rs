@@ -196,16 +196,16 @@ impl RememexServer {
             self.state.config.query_router_enabled,
             self.state.config.mmr_enabled,
             self.state.config.mmr_lambda,
-            self.state.config.hyde.as_ref().map_or(false, |h| h.enabled));
+            self.state.config.hyde.as_ref().is_some_and(|h| h.enabled));
+
+        let hyde_doc = indexer::hyde::maybe_generate(
+            self.state.config.hyde.as_ref(),
+            &query,
+            query_weights.use_hyde,
+        ).await;
 
         let query_vector = {
             let guard = self.state.provider.lock().await;
-
-            let hyde_doc = indexer::hyde::maybe_generate(
-                self.state.config.hyde.as_ref(),
-                &query,
-                query_weights.use_hyde,
-            ).await;
 
             if let Some(ref doc) = hyde_doc {
                 debug!("mcp search: using HyDE embedding for conceptual query");
@@ -226,6 +226,7 @@ impl RememexServer {
 
         let (mut merged, used_hybrid) = indexer::search_pipeline(
             &self.state.db, &table_name, &query, &query_vector, search_limit, pp_ref, fe_ref,
+            query_weights.vector_weight, query_weights.fts_weight,
         )
         .await
         .map_err(|e| McpError::internal_error(e.to_string(), None))?;

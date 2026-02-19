@@ -35,6 +35,7 @@ pub async fn get_containers(
     Ok((list, config.active_container.clone()))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn create_container(
     name: String,
@@ -225,7 +226,13 @@ pub async fn search(
 
     debug!("search: features: router={}, mmr={} (λ={:.2}), hyde={}",
         query_router_enabled, mmr_enabled, mmr_lambda,
-        hyde_config.as_ref().map_or(false, |h| h.enabled));
+        hyde_config.as_ref().is_some_and(|h| h.enabled));
+
+    let hyde_doc = indexer::hyde::maybe_generate(
+        hyde_config.as_ref(),
+        &query,
+        query_weights.use_hyde,
+    ).await;
 
     let query_vector = {
         let guard = provider_state.lock().await;
@@ -233,12 +240,6 @@ pub async fn search(
             return Err(format!("Embedding provider failed: {}", err));
         }
         let provider = guard.provider.as_ref().ok_or("Embedding provider is loading... Please wait a moment.")?;
-
-        let hyde_doc = indexer::hyde::maybe_generate(
-            hyde_config.as_ref(),
-            &query,
-            query_weights.use_hyde,
-        ).await;
 
         if let Some(ref doc) = hyde_doc {
             debug!("search: using HyDE embedding for conceptual query");
@@ -264,6 +265,7 @@ pub async fn search(
 
     let (mut merged, used_hybrid) = indexer::search_pipeline(
         &db, &table_name, &query, &query_vector, 50, None, None,
+        query_weights.vector_weight, query_weights.fts_weight,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -523,7 +525,7 @@ pub async fn get_config(
         remote_dimensions,
         first_run: config.first_run,
         use_reranker: config.use_reranker,
-        hyde_enabled: config.hyde.as_ref().map_or(false, |h| h.enabled),
+        hyde_enabled: config.hyde.as_ref().is_some_and(|h| h.enabled),
         hyde_endpoint: config.hyde.as_ref().map_or(String::new(), |h| h.endpoint.clone()),
         hyde_model: config.hyde.as_ref().map_or(String::new(), |h| h.model.clone()),
         hyde_api_key: config.hyde.as_ref().and_then(|h| h.api_key.clone()).unwrap_or_default(),
