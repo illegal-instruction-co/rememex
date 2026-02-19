@@ -83,5 +83,18 @@
     "settings_remote_dimensions_desc": "Vector dimensions from the remote model",
     "settings_provider_changed_warning": "Provider changed — restart & reindex required for existing data",
     "settings_use_reranker": "Reranker",
-    "settings_use_reranker_desc": "Re-rank search results for better on small models accuracy (uses ~1GB RAM)"
+    "settings_use_reranker_desc": "Re-rank search results for better on small models accuracy (uses ~1GB RAM)",
+    "annotation_add": "Add Annotation",
+    "annotation_placeholder": "Note",
+    "annotation_save": "Save",
+    "annotation_saved": "Annotation saved",
+    "annotation_delete": "Delete annotation",
+    "sidebar_annotations": "Annotations",
+    "sidebar_no_annotations": "No annotations yet",
+    "annotation_filter": "Filter annotations...",
+    "annotation_no_match": "No matching annotations",
+    "annotation_show_more": "{{count}} more...",
+    "annotation_source_all": "All",
+    "annotation_source_user": "User",
+    "annotation_source_agent": "Agent"
 }

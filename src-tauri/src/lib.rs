@@ -313,7 +313,10 @@ pub fn run() {
             commands::delete_container,
             commands::set_active_container,
             commands::get_config,
-            commands::update_config
+            commands::update_config,
+            commands::add_annotation,
+            commands::get_annotations,
+            commands::delete_annotation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 
 use rememex_lib::config::{get_embedding_model, get_table_name, load_config, Config, EmbeddingProviderConfig};
 use rememex_lib::indexer;
+use rememex_lib::indexer::annotations;
 use rememex_lib::indexer::embedding_provider::{EmbeddingProvider, LocalProvider, RemoteProvider};
 use rememex_lib::state::ModelState;
 
@@ -92,6 +93,22 @@ struct RelatedParams {
     container: Option<String>,
     #[schemars(description = "Number of related files to return (default 10, max 30)")]
     top_k: Option<usize>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct AnnotateParams {
+    #[schemars(description = "Absolute path to the file to annotate.")]
+    path: String,
+    #[schemars(description = "The annotation note to attach to the file. This text is embedded and searchable.")]
+    note: String,
+    container: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct AnnotationsParams {
+    #[schemars(description = "Optional file path. If provided, returns annotations for that file only. Otherwise returns all.")]
+    path: Option<String>,
+    container: Option<String>,
 }
 
 fn is_path_within_container(file_path: &Path, config: &Config, container_name: &str) -> bool {
@@ -728,6 +745,123 @@ impl RememexServer {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(
+        description = "Add a searchable annotation (note) to a file. The note is embedded and will appear in future search results. Use this to leave context, warnings, or explanations for yourself or other agents."
+    )]
+    async fn rememex_annotate(
+        &self,
+        Parameters(AnnotateParams { path, note, container }): Parameters<AnnotateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let container_name = container
+            .as_deref()
+            .unwrap_or(&self.state.config.active_container);
+        let table_name = get_table_name(container_name);
+
+        let vector = {
+            let provider = self.state.provider.lock().await;
+            provider.embed_passages(vec![note.clone()]).await
+                .map_err(|e| McpError::internal_error(format!("Embedding failed: {}", e), None))?
+                .into_iter()
+                .next()
+                .ok_or_else(|| McpError::internal_error("Empty embedding result", None))?
+        };
+
+        let dim = vector.len();
+        let ann_table_name = format!("{}_annotations", table_name);
+        let ann_table = if let Ok(t) = self.state.db.open_table(&ann_table_name).execute().await {
+            t
+        } else {
+            use arrow_schema::{DataType, Field, Schema};
+            use arrow_array::RecordBatchIterator;
+            let schema = std::sync::Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Utf8, false),
+                Field::new("path", DataType::Utf8, false),
+                Field::new("note", DataType::Utf8, false),
+                Field::new("source", DataType::Utf8, false),
+                Field::new("vector", DataType::FixedSizeList(
+                    std::sync::Arc::new(Field::new("item", DataType::Float32, true)),
+                    dim as i32,
+                ), false),
+                Field::new("created_at", DataType::Int64, false),
+            ]));
+            self.state.db.create_table(&ann_table_name, RecordBatchIterator::new(vec![], schema))
+                .execute().await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+        };
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let id = format!("ann_{}", now.as_nanos());
+        let created_at = now.as_secs() as i64;
+
+        use arrow_array::*;
+        use arrow_schema::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new("path", DataType::Utf8, false),
+            Field::new("note", DataType::Utf8, false),
+            Field::new("source", DataType::Utf8, false),
+            Field::new("vector", DataType::FixedSizeList(
+                std::sync::Arc::new(Field::new("item", DataType::Float32, true)),
+                dim as i32,
+            ), false),
+            Field::new("created_at", DataType::Int64, false),
+        ]));
+        let vector_array = FixedSizeListArray::try_new(
+            std::sync::Arc::new(Field::new("item", DataType::Float32, true)),
+            dim as i32,
+            std::sync::Arc::new(Float32Array::from(vector)),
+            None,
+        ).map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                std::sync::Arc::new(StringArray::from(vec![id.as_str()])),
+                std::sync::Arc::new(StringArray::from(vec![path.as_str()])),
+                std::sync::Arc::new(StringArray::from(vec![note.as_str()])),
+                std::sync::Arc::new(StringArray::from(vec!["agent"])),
+                std::sync::Arc::new(vector_array),
+                std::sync::Arc::new(Int64Array::from(vec![created_at])),
+            ],
+        ).map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        ann_table.add(RecordBatchIterator::new(vec![Ok(batch)], schema))
+            .execute().await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let result = serde_json::json!({
+            "id": id,
+            "path": path,
+            "note": note,
+            "source": "agent",
+            "created_at": created_at
+        });
+        Ok(CallToolResult::success(vec![Content::text(result.to_string())]))
+    }
+
+    #[tool(
+        description = "List annotations for a file or all annotations in a container. Returns id, path, note, and timestamp for each."
+    )]
+    async fn rememex_annotations(
+        &self,
+        Parameters(AnnotationsParams { path, container }): Parameters<AnnotationsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let container_name = container
+            .as_deref()
+            .unwrap_or(&self.state.config.active_container);
+        let table_name = get_table_name(container_name);
+
+        let result = annotations::get_annotations(&self.state.db, &table_name, path.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
 }
 
 #[tool_handler]
@@ -748,6 +882,8 @@ impl ServerHandler for RememexServer {
                  Use rememex_index_status to check index health and stats. \
                  Use rememex_diff to see what files changed recently (e.g. '2h', '1d'). Start conversations with this. \
                  Use rememex_related to find semantically similar files to a given file path. \
+                 Use rememex_annotate to add searchable notes to files (they appear in future searches). \
+                 Use rememex_annotations to list existing annotations. \
                  Use rememex_list_containers to see available search scopes."
                     .into(),
             ),

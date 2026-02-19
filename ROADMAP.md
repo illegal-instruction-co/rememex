@@ -32,6 +32,7 @@
 - ~~**per-container embedding model**~~ done -- each container snapshots its embedding provider at creation time. switching containers auto-loads the correct provider (local or remote). sidebar shows provider label per container. backward compatible: existing containers fall back to global provider
 - ~~**custom title bar**~~ done -- custom drag area with minimize + close (hide to tray) buttons. Windows 11 style, red close hover
 - ~~**UI polish**~~ done -- status bar padding fixed, hotkey shortcut label now reads from config instead of hardcoded "Alt+Space"
+- ~~**user annotations**~~ done -- attach searchable notes to files from GUI or MCP. annotations are embedded and surface in search results. agents can leave context for future sessions via `rememex_annotate` / `rememex_annotations`
 - **content browser** -- browse indexed files visually like a file manager. image thumbnails, video previews, PDF first page, code with syntax highlighting. not just search -- let people explore their stuff naturally
 - **more file types** -- always
 
