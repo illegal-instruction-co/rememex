@@ -88,7 +88,7 @@ when to turn it off:
 
 **local (default):** free, private, no API keys, decent quality. uses Multilingual-E5-Base via ONNX. works offline. ~2GB model download on first run.
 
-**remote:** better embedding quality (especially for code), costs money, sends text chunks to an API. your files stay local — only the chunked text is sent for embedding.
+**remote:** better embedding quality (especially for code), costs money, sends text chunks to an API. your files stay local,  only the chunked text is sent for embedding.
 
 when remote makes sense:
 - large codebases where you need precise code search
@@ -102,7 +102,7 @@ when local is better:
 - you're indexing personal stuff and don't want chunks on anyone's servers
 - the defaults work fine for your use case (they usually do)
 
-don't mix local and remote in the same container. each container snapshots its provider at creation time. if you want to try remote, create a new container. switching providers on an existing container means reindexing everything from scratch — the old vectors have different dimensions.
+don't mix local and remote in the same container. each container snapshots its provider at creation time. if you want to try remote, create a new container. switching providers on an existing container means reindexing everything from scratch,  the old vectors have different dimensions.
 
 ## RAM: the elephant in the room
 
@@ -115,13 +115,13 @@ rememex uses real memory. here's the breakdown:
 | indexing buffer | 0.5-2 GB | during indexing only |
 | lancedb | varies | depends on index size |
 
-peak usage happens during initial indexing. once it's done, it drops and stays stable. don't panic when you see 3-4GB during first index — it's temporary.
+peak usage happens during initial indexing. once it's done, it drops and stays stable. don't panic when you see 3-4GB during first index,  it's temporary.
 
 tips to reduce memory:
 - disable the reranker if you're tight
 - use `AllMiniLML6V2` instead of `MultilingualE5Base` (smaller model, still decent)
 - index folders incrementally, not everything at once
-- close and reopen the app after initial indexing — some buffers get freed
+- close and reopen the app after initial indexing,  some buffers get freed
 
 ## annotations: the sleeper feature
 
@@ -147,7 +147,7 @@ annotations persist across sessions and conversations. they're your institutiona
 
 ## OCR: it's better than you think
 
-rememex OCRs images automatically via Windows UWP engine. screenshots, diagrams, photos of whiteboards — all searchable.
+rememex OCRs images automatically via Windows UWP engine. screenshots, diagrams, photos of whiteboards,  all searchable.
 
 it also reads EXIF data:
 - GPS coordinates → reverse geocoded to city names. search "photos from paris" and it works
@@ -172,7 +172,7 @@ rebind it to something you'll actually press. `Ctrl+Space` if your IDE doesn't f
 
 ## file watcher: it just works (mostly)
 
-the watcher picks up file changes in real time. create a file, edit a file, delete a file — the index updates automatically.
+the watcher picks up file changes in real time. create a file, edit a file, delete a file,  the index updates automatically.
 
 things that trip it up:
 - renaming a folder with 10,000 files → storm of events, might take a sec
