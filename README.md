@@ -67,11 +67,12 @@
 
 ```mermaid
 graph LR
-    A[file watcher] -->|OS events| B[file walker]
+    W[file watcher] -->|change event| SI[index single file]
+    WB[WalkBuilder] -->|bulk scan| B[collect files]
     B --> C{image?}
     C -->|yes| D[UWP OCR + EXIF]
     C -->|no| E[file_io reader]
-    D --> F[git history]
+    D --> F[git context]
     E --> F
     F --> G["semantic chunking (per-language)"]
     G --> H[embedding provider]
@@ -89,7 +90,10 @@ graph LR
     EXP --> FTS[full-text search]
     VS --> HM["hybrid merge (RRF)"]
     FTS --> HM
-    HM --> RR[JINA reranker]
+    EMB --> AS[annotation search]
+    AS --> AM[merge annotations]
+    HM --> AM
+    AM --> RR[JINA reranker]
     RR --> SC[score normalization]
     SC --> R[ranked results]
 
@@ -140,22 +144,37 @@ agents using rememex are expected to use 5-10x fewer tokens and complete tasks s
 ```
 rememex/
 ├── src/                          # react/ts frontend
-│   ├── components/               # UI components (sidebar, search, settings, results)
-│   ├── locales/                  # i18n translations
+│   ├── components/               # UI components
+│   │   ├── Sidebar.tsx           # sidebar: containers, annotations, filters
+│   │   ├── SearchBar.tsx         # search input
+│   │   ├── ResultsList.tsx       # virtualized search results
+│   │   ├── StatusBar.tsx         # indexing status bar
+│   │   ├── TitleBar.tsx          # custom window title bar
+│   │   ├── Settings.tsx          # settings panel
+│   │   └── settings/            # modular settings sub-panels
+│   ├── locales/                  # i18n translations (en, tr)
+│   ├── Modal.tsx                 # modal dialog component
+│   ├── i18n.tsx                  # internationalization setup
+│   ├── types.ts                  # shared TypeScript types
 │   └── App.tsx                   # main app shell
 ├── src-tauri/
 │   └── src/
 │       ├── indexer/              # core engine
+│       │   ├── mod.rs            # indexer orchestration, batch embed, reranker
 │       │   ├── chunking.rs       # per-language semantic splitting
 │       │   ├── embedding.rs      # fastembed ONNX inference
 │       │   ├── embedding_provider.rs  # local/remote provider trait
 │       │   ├── search.rs         # hybrid vector + full-text + reranker
+│       │   ├── pipeline.rs       # search pipeline scoring
+│       │   ├── annotations.rs    # annotation CRUD operations
 │       │   ├── ocr.rs            # UWP OCR bridge
-│       │   ├── pipeline.rs       # search pipeline orchestration
+│       │   ├── file_io.rs        # file reading (text, pdf, binary)
+│       │   ├── git.rs            # git log integration
 │       │   └── db.rs             # lancedb operations
 │       ├── bin/mcp.rs            # MCP server binary (stdio)
 │       ├── commands.rs           # tauri IPC commands
 │       ├── config.rs             # config loading / migration
+│       ├── state.rs              # shared app state types
 │       ├── watcher.rs            # notify-based file watcher
 │       └── lib.rs                # app setup, tray, shortcuts
 ├── config.schema.json            # JSON schema for config validation
